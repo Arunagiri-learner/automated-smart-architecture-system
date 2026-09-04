@@ -56,6 +56,30 @@ class ProjectStoreService {
     return this.cleanContaminatedRealProject(project);
   }
 
+  public getOrCreate(id: string, ownerId?: string, defaultName?: string): IProject {
+    let project = this.getById(id, ownerId);
+    if (!project) {
+      project = {
+        id,
+        ownerId,
+        name: defaultName || `Project ${id}`,
+        location: 'Architectural Site',
+        buildingType: 'Residential',
+        description: 'Auto-created workspace for DWG analysis',
+        floorsCount: 0,
+        roomsCount: 0,
+        totalAreaSqFt: 0,
+        totalOccupancy: 0,
+        status: 'Draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        rooms: [],
+      };
+      this.projects.set(id, project);
+    }
+    return project;
+  }
+
   public create(
     data: {
       name: string;

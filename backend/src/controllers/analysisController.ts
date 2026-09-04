@@ -9,11 +9,7 @@ export const uploadAndAnalyze = async (req: AuthenticatedRequest, res: Response)
 
   const { projectId } = req.params;
   const ownerId = req.user?.id;
-  const project = ProjectStore.getById(projectId, ownerId);
-
-  if (!project) {
-    return res.status(404).json({ success: false, error: `Project '${projectId}' not found.` });
-  }
+  const project = ProjectStore.getOrCreate(projectId, ownerId);
 
   const file = req.file;
   if (!file) {

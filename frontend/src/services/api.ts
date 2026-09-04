@@ -1,6 +1,10 @@
 import { IProject, IRoom, BuildingType, IBudgetAssumptions, IProjectBudget, ConstructionQuality } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD
+    ? 'https://automated-smart-architecture-system.onrender.com/api'
+    : '/api');
 
 export const DEFAULT_QUALITY_RATES: Record<ConstructionQuality, number> = {
   Basic: 1800,
@@ -216,16 +220,32 @@ export const api = {
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     if (onProgress) onProgress(30);
-    const res = await fetch(`${API_BASE_URL}/analysis/${projectId}/upload`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE_URL}/analysis/${projectId}/upload`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+    } catch (netErr: any) {
+      throw new Error(`Network Connection Error: Unable to establish connection to backend at '${API_BASE_URL}'. Please check your network or backend availability.`);
+    }
 
     if (onProgress) onProgress(80);
     if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Floor plan DWG analysis failed.');
+      let message = `Server returned HTTP ${res.status}`;
+      try {
+        const errorData = await res.json();
+        if (errorData && errorData.error) message = errorData.error;
+      } catch (e) {
+        if (res.status === 413) message = 'Uploaded file payload is too large (exceeds server limit).';
+        else if (res.status === 401) message = 'Session expired or unauthenticated. Please sign in again.';
+        else if (res.status === 403) message = 'Access forbidden. You do not own this project.';
+        else if (res.status === 404) message = `Project '${projectId}' not found on server.`;
+        else if (res.status === 500) message = 'Internal server error processing floor plan.';
+        else if (res.status === 503) message = 'Service or database unavailable. Please try again in a moment.';
+      }
+      throw new Error(message);
     }
 
     if (onProgress) onProgress(100);

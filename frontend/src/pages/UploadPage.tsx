@@ -56,40 +56,32 @@ export const UploadPage: React.FC = () => {
   };
 
   const startAnalysisProcess = async () => {
-    if (!selectedFile && state !== 'EMPTY') return;
-
-    // Default sample DWG if none selected explicitly
-    const fileToUpload = selectedFile || new File(['dwg-header-bytes-demo'], 'modern_office_level1-4_v3.dwg', { type: 'application/octet-stream' });
+    if (!selectedFile) {
+      setErrorMessage('Please select an AutoCAD DWG or DXF floor plan file from your device to analyze.');
+      setState('ERROR');
+      return;
+    }
 
     setState('UPLOADING');
     setProgressStep(1);
 
-    setTimeout(() => {
+    try {
       setProgressStep(2);
       setState('PROCESSING');
-    }, 600);
-
-    setTimeout(() => {
       setProgressStep(3);
-    }, 1200);
 
-    setTimeout(() => {
-      setProgressStep(4);
-    }, 1800);
+      const res = await api.uploadAndAnalyze(projectId, selectedFile, (prog) => {
+        if (prog >= 30) setProgressStep(3);
+        if (prog >= 80) setProgressStep(4);
+      });
 
-    try {
-      await api.uploadAndAnalyze(projectId, fileToUpload);
-      setTimeout(() => {
-        setProgressStep(5);
-        setState('COMPLETE');
-        addToast('success', 'Floor plan analyzed successfully!');
-      }, 2400);
+      setProgressStep(5);
+      setState('COMPLETE');
+      addToast('success', res.message || 'Floor plan analyzed successfully!');
     } catch (err: any) {
-      setTimeout(() => {
-        setState('ERROR');
-        setErrorMessage(err.message || 'Analysis failed. Please ensure the DWG file contains valid vector geometry.');
-        addToast('error', 'Analysis failed.');
-      }, 1000);
+      setState('ERROR');
+      setErrorMessage(err.message || 'Floor plan analysis failed.');
+      addToast('error', err.message || 'Analysis failed.');
     }
   };
 

@@ -11,33 +11,6 @@ export interface IDwgConversionResult {
 }
 
 export class LibreDwgService {
-  private static wasmModule: any = null;
-
-  private static async getWasmModule(): Promise<any> {
-    if (this.wasmModule) {
-      return this.wasmModule;
-    }
-    try {
-      const mod: any = await import('@mlightcad/libredwg-web');
-      if (mod.createModule) {
-        const wasmInstance = await mod.createModule();
-        this.wasmModule = {
-          LibreDwg: mod.LibreDwg,
-          wasmInstance,
-        };
-      } else {
-        this.wasmModule = {
-          LibreDwg: mod.LibreDwg,
-        };
-      }
-      console.log('✅ LibreDWG WebAssembly module initialized successfully.');
-      return this.wasmModule;
-    } catch (err: any) {
-      console.error('❌ Failed to initialize LibreDWG WASM module:', err);
-      throw new Error(`LibreDWG WebAssembly initialization failed: ${err.message}`);
-    }
-  }
-
   public static async convertDwgToDxf(filePath: string): Promise<IDwgConversionResult> {
     try {
       if (!fs.existsSync(filePath)) {
@@ -45,15 +18,14 @@ export class LibreDwgService {
       }
 
       const fileBuffer = fs.readFileSync(filePath);
-      const arrayBuffer = fileBuffer.buffer.slice(
-        fileBuffer.byteOffset,
-        fileBuffer.byteOffset + fileBuffer.byteLength
-      );
+      const uint8Array = new Uint8Array(fileBuffer);
 
-      const mod = await this.getWasmModule();
-      const libreDwgInstance = mod.wasmInstance ? new mod.LibreDwg(mod.wasmInstance) : new mod.LibreDwg();
+      // Dynamically import and instantiate fresh WASM module per request
+      const mod: any = await import('@mlightcad/libredwg-web');
+      const wasmInstance = mod.createModule ? await mod.createModule() : undefined;
+      const libreDwgInstance = wasmInstance ? new mod.LibreDwg(wasmInstance) : new mod.LibreDwg();
 
-      let dxfUint8Array: Uint8Array | null = libreDwgInstance.dwg_write_dxf(arrayBuffer);
+      let dxfUint8Array: Uint8Array | null = libreDwgInstance.dwg_write_dxf(uint8Array.buffer);
 
       if (!dxfUint8Array || dxfUint8Array.length === 0) {
         return {
@@ -64,7 +36,7 @@ export class LibreDwgService {
 
       const dxfSizeBytes = dxfUint8Array.length;
       const dxfContent = new TextDecoder('utf-8').decode(dxfUint8Array);
-      
+
       // Release WASM memory references
       dxfUint8Array = null;
 
