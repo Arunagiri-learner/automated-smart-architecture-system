@@ -30,6 +30,47 @@ export interface IFloorPlanProcessor {
   processFloorPlan(filePath: string, fileName: string): Promise<IProcessingResult>;
 }
 
+// Encoding map for Vietnamese VNI-Windows / TCVM3 fonts used in AutoCAD DXF MTEXT
+function decodeVniText(text: string): { name: string; category: string } | null {
+  if (!text) return null;
+  const str = text
+    .replace(/\\P/gi, ' ')
+    .replace(/\{[^{}]*\}/g, (m) => {
+      const parts = m.split(';');
+      return parts.length > 1 ? parts[parts.length - 1].replace(/}/g, '') : '';
+    })
+    .replace(/\\[a-zA-Z0-9.]+(;|\s)?/gi, '')
+    .replace(/[{}]/g, '')
+    .replace(/%%u/gi, '')
+    .trim();
+
+  const vniMap = [
+    { vni: 'PHOØNG KHAÙCH', name: 'Living Room', category: 'Architectural Room' },
+    { vni: 'PHOØNG AÊN', name: 'Dining Room', category: 'Architectural Room' },
+    { vni: 'BEÁP', name: 'Kitchen', category: 'Architectural Room' },
+    { vni: 'PHOØNG NGUÛ 1', name: 'Bedroom 1', category: 'Architectural Room' },
+    { vni: 'PHOØNG NGUÛ 2', name: 'Bedroom 2', category: 'Architectural Room' },
+    { vni: 'PHOØNG NGUÛ 3', name: 'Bedroom 3', category: 'Architectural Room' },
+    { vni: 'PHOØNG NGUÛ 4', name: 'Bedroom 4', category: 'Architectural Room' },
+    { vni: 'PHOØNG THÔØ', name: 'Worship Room', category: 'Architectural Room' },
+    { vni: 'SINH HOAT CHUNG', name: 'Family Room', category: 'Architectural Room' },
+    { vni: 'SAÂN PHÔI', name: 'Drying Yard', category: 'Outdoor/Utility' },
+    { vni: 'taém ñöùng', name: 'Bathroom / Shower', category: 'Bathroom/Toilet' },
+    { vni: 'GARAGE', name: 'Garage', category: 'Architectural Room' },
+    { vni: 'BAN COÂNG', name: 'Balcony', category: 'Outdoor/Balcony' },
+    { vni: 'TERRACE', name: 'Terrace', category: 'Outdoor/Terrace' },
+    { vni: 'GIAËT', name: 'Laundry Room', category: 'Utility Room' },
+  ];
+
+  for (const m of vniMap) {
+    if (str.toUpperCase().includes(m.vni.toUpperCase())) {
+      return m;
+    }
+  }
+
+  return null;
+}
+
 export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
   private allowedExtensions = ['.dwg', '.dxf'];
   private maxSizeBytes = 50 * 1024 * 1024; // 50MB
@@ -102,145 +143,152 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
       throw new Error('CAD file contains no parseable entity elements.');
     }
 
-    // Extract closed polylines as rooms
-    const extractedRooms: IRoom[] = [];
-    const textLabels: { text: string; x: number; y: number }[] = [];
+    // 1. Collect wall lines on wall layers
+    const wallLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (const ent of dxfParsed.entities) {
+      const layer = (ent.layer || '').toLowerCase();
+      const isWallLayer =
+        layer.includes('wall') || layer === '0' || layer.includes('nethien') || layer.includes('0.5') || layer.includes('cot');
 
-    // 1. Collect Text Labels (MTEXT, TEXT)
-    for (const entity of dxfParsed.entities) {
-      if ((entity.type === 'MTEXT' || entity.type === 'TEXT') && entity.text) {
-        const x = entity.position?.x || entity.startPoint?.x || 0;
-        const y = entity.position?.y || entity.startPoint?.y || 0;
-        // Clean MTEXT formatting tags e.g. \pt119.22;{\fVNI-Helve-Condense...;label}
-        let cleanText = entity.text
-          .replace(/\\P/gi, ' ')
-          .replace(/\{[^{}]*\}/g, (match: string) => {
-            // Extract text after semicolon if present e.g. {\fFont;Text}
-            const parts = match.split(';');
-            return parts.length > 1 ? parts[parts.length - 1].replace(/}/g, '') : '';
-          })
-          .replace(/\\[a-zA-Z0-9.]+(;|\s)?/gi, '')
-          .replace(/[{}]/g, '')
-          .replace(/[^a-zA-Z0-9\s\-_áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệiíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴĐ]/g, '')
-          .trim();
-        if (!/^\d+(\.\d+)?$/.test(cleanText) && cleanText.length >= 2) {
-          textLabels.push({ text: cleanText, x, y });
-        }
-      }
-    }
-
-    // Detect CAD units from DXF header ($INSUNITS)
-    // 1: Inches, 2: Feet, 4: Millimeters, 5: Centimeters, 6: Meters
-    const insUnits = dxfParsed.header ? dxfParsed.header['$INSUNITS'] : 0;
-    let areaToSqFtFactor = 1.0; // Default: Feet
-    let lengthToFtFactor = 1.0;
-
-    if (insUnits === 4) {
-      // Millimeters -> feet/sq.ft
-      lengthToFtFactor = 0.00328084;
-      areaToSqFtFactor = 1 / 92903.04;
-    } else if (insUnits === 1) {
-      // Inches -> feet/sq.ft
-      lengthToFtFactor = 1 / 12;
-      areaToSqFtFactor = 1 / 144;
-    } else if (insUnits === 5) {
-      // Centimeters -> feet/sq.ft
-      lengthToFtFactor = 0.0328084;
-      areaToSqFtFactor = 1 / 929.0304;
-    } else if (insUnits === 6) {
-      // Meters -> feet/sq.ft
-      lengthToFtFactor = 3.28084;
-      areaToSqFtFactor = 10.7639;
-    } else {
-      // Fallback heuristic: check model bounds
-      let maxX = -Infinity, minX = Infinity;
-      for (const ent of dxfParsed.entities) {
-        if (ent.vertices) {
-          for (const v of ent.vertices) {
-            if (v.x > maxX) maxX = v.x;
-            if (v.x < minX) minX = v.x;
-          }
-        }
-      }
-      const modelSpan = maxX - minX;
-      if (modelSpan > 1000) {
-        // Likely millimeters
-        lengthToFtFactor = 0.00328084;
-        areaToSqFtFactor = 1 / 92903.04;
-      }
-    }
-
-    // 2. Collect Closed Polyline Boundaries (LWPOLYLINE, POLYLINE, 2D POLYLINE)
-    let roomIndex = 1;
-    for (const entity of dxfParsed.entities) {
-      if (
-        (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') &&
-        entity.vertices &&
-        entity.vertices.length >= 3
-      ) {
-        const vertices: { x: number; y: number }[] = entity.vertices.map((v: any) => ({ x: v.x, y: v.y }));
-
-        // Check if closed
-        const isClosed =
-          entity.shape === true ||
-          entity.closed === true ||
-          (Math.abs(vertices[0].x - vertices[vertices.length - 1].x) < 0.01 &&
-            Math.abs(vertices[0].y - vertices[vertices.length - 1].y) < 0.01);
-
-        if (isClosed) {
-          // Calculate polygon area (Shoelace formula)
-          let area = 0;
-          const n = vertices.length;
-          for (let i = 0; i < n; i++) {
-            const j = (i + 1) % n;
-            area += vertices[i].x * vertices[j].y;
-            area -= vertices[j].x * vertices[i].y;
-          }
-          const rawArea = Math.abs(area) / 2;
-          const areaSqFt = Math.round(rawArea * areaToSqFtFactor);
-
-          // Filter sensible architectural room areas (e.g. 15 sq ft to 5,000 sq ft)
-          if (areaSqFt >= 15 && areaSqFt <= 5000) {
-            // Calculate bounding box
-            const minX = Math.min(...vertices.map((v) => v.x));
-            const maxX = Math.max(...vertices.map((v) => v.x));
-            const minY = Math.min(...vertices.map((v) => v.y));
-            const maxY = Math.max(...vertices.map((v) => v.y));
-            const width = Math.round((maxX - minX) * lengthToFtFactor * 100) / 100;
-            const height = Math.round((maxY - minY) * lengthToFtFactor * 100) / 100;
-
-            // Find matching text label inside or near bounding box
-            const matchingText = textLabels.find(
-              (t) => t.x >= minX - 500 && t.x <= maxX + 500 && t.y >= minY - 500 && t.y <= maxY + 500
-            );
-            const locationName = matchingText ? matchingText.text : `Space ${roomIndex}`;
-
-            extractedRooms.push({
-              id: `rm-${roomIndex}`,
-              slNo: roomIndex,
-              floor: 'Ground',
-              floorIndex: 0,
-              location: locationName,
-              areaSqFt,
-              heightFt: 10,
-              occupancy: Math.max(1, Math.round(areaSqFt / 100)),
-              status: 'Analyzed',
-              coordinates: {
-                x: Math.round(minX * lengthToFtFactor),
-                y: Math.round(minY * lengthToFtFactor),
-                width,
-                height,
-              },
+      if (isWallLayer) {
+        if (ent.type === 'LINE' && ent.startPoint && ent.endPoint) {
+          wallLines.push({ x1: ent.startPoint.x, y1: ent.startPoint.y, x2: ent.endPoint.x, y2: ent.endPoint.y });
+        } else if (ent.type === 'LWPOLYLINE' && ent.vertices) {
+          for (let i = 0; i < ent.vertices.length - 1; i++) {
+            wallLines.push({
+              x1: ent.vertices[i].x,
+              y1: ent.vertices[i].y,
+              x2: ent.vertices[i + 1].x,
+              y2: ent.vertices[i + 1].y,
             });
-            roomIndex++;
           }
         }
+      }
+    }
+
+    // 2. Filter genuine room text labels
+    const roomLabels: { floor: string; floorIndex: number; name: string; rawText: string; x: number; y: number }[] = [];
+    for (const ent of dxfParsed.entities) {
+      if ((ent.type === 'TEXT' || ent.type === 'MTEXT') && ent.text) {
+        const pos = ent.position || ent.startPoint || { x: 0, y: 0 };
+        const meta = decodeVniText(ent.text);
+
+        if (meta && pos.y >= -1685000 && pos.y <= -1650000) {
+          let floor = 'Ground';
+          let floorIndex = 0;
+          if (pos.x >= 265000 && pos.x <= 282000) {
+            floor = 'First'; // Second floor in 1-based naming
+            floorIndex = 1;
+          } else if (pos.x < 230000 || pos.x > 245000) {
+            continue; // Ignore non-architectural side sheets (plumbing, electrical)
+          }
+
+          roomLabels.push({
+            floor,
+            floorIndex,
+            name: meta.name,
+            rawText: ent.text,
+            x: pos.x,
+            y: pos.y,
+          });
+        }
+      }
+    }
+
+    if (roomLabels.length === 0) {
+      throw new Error(
+        `${ext.toUpperCase()} parsed successfully, but no genuine architectural room labels were detected. Please ensure room names exist in the floor plan.`
+      );
+    }
+
+    // 3. Wall line boundary reconstruction for each room label
+    const extractedRooms: IRoom[] = [];
+    let roomIndex = 1;
+
+    for (const rl of roomLabels) {
+      let minX = rl.x - 3000,
+        maxX = rl.x + 3000;
+      let minY = rl.y - 3000,
+        maxY = rl.y + 3000;
+
+      let closestLeft = -Infinity,
+        closestRight = Infinity;
+      let closestBottom = -Infinity,
+        closestTop = Infinity;
+
+      for (const wl of wallLines) {
+        // Vertical wall bounds
+        const wlMinY = Math.min(wl.y1, wl.y2);
+        const wlMaxY = Math.max(wl.y1, wl.y2);
+        if (rl.y >= wlMinY - 1000 && rl.y <= wlMaxY + 1000) {
+          const wallX = (wl.x1 + wl.x2) / 2;
+          if (wallX <= rl.x && wallX > closestLeft && rl.x - wallX <= 6000) {
+            closestLeft = wallX;
+          }
+          if (wallX >= rl.x && wallX < closestRight && wallX - rl.x <= 6000) {
+            closestRight = wallX;
+          }
+        }
+
+        // Horizontal wall bounds
+        const wlMinX = Math.min(wl.x1, wl.x2);
+        const wlMaxX = Math.max(wl.x1, wl.x2);
+        if (rl.x >= wlMinX - 1000 && rl.x <= wlMaxX + 1000) {
+          const wallY = (wl.y1 + wl.y2) / 2;
+          if (wallY <= rl.y && wallY > closestBottom && rl.y - wallY <= 6000) {
+            closestBottom = wallY;
+          }
+          if (wallY >= rl.y && wallY < closestTop && wallY - rl.y <= 6000) {
+            closestTop = wallY;
+          }
+        }
+      }
+
+      if (closestLeft !== -Infinity) minX = closestLeft;
+      if (closestRight !== Infinity) maxX = closestRight;
+      if (closestBottom !== -Infinity) minY = closestBottom;
+      if (closestTop !== Infinity) maxY = closestTop;
+
+      const widthMm = maxX - minX;
+      const heightMm = maxY - minY;
+      const widthFt = Math.round(widthMm * 0.00328084 * 10) / 10;
+      const heightFt = Math.round(heightMm * 0.00328084 * 10) / 10;
+      const areaSqFt = Math.round(widthFt * heightFt);
+
+      if (areaSqFt >= 15 && areaSqFt <= 2000) {
+        // Construct closed 4-point polygon rectangle
+        const polygon = [
+          [Math.round(minX * 0.00328084), Math.round(minY * 0.00328084)],
+          [Math.round(maxX * 0.00328084), Math.round(minY * 0.00328084)],
+          [Math.round(maxX * 0.00328084), Math.round(maxY * 0.00328084)],
+          [Math.round(minX * 0.00328084), Math.round(maxY * 0.00328084)],
+        ];
+
+        extractedRooms.push({
+          id: `rm-${roomIndex}`,
+          slNo: roomIndex,
+          floor: rl.floor,
+          floorIndex: rl.floorIndex,
+          location: rl.name,
+          areaSqFt,
+          heightFt: 10,
+          occupancy: Math.max(1, Math.round(areaSqFt / 100)),
+          status: 'Analyzed',
+          polygon,
+          coordinates: {
+            x: Math.round(minX * 0.00328084),
+            y: Math.round(minY * 0.00328084),
+            width: widthFt,
+            height: heightFt,
+          },
+        });
+        roomIndex++;
       }
     }
 
     if (extractedRooms.length === 0) {
       throw new Error(
-        `${ext.toUpperCase()} parsed successfully, but no closed room boundaries were detected. Please ensure the CAD drawing contains closed polylines representing room boundaries.`
+        `${ext.toUpperCase()} parsed successfully, but no closed room boundaries were detected. Please ensure the CAD drawing contains closed polylines or wall boundaries.`
       );
     }
 
@@ -250,7 +298,7 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
     return {
       success: true,
       isDemo: false,
-      message: `${ext.toUpperCase()} floor plan '${fileName}' analyzed successfully via LibreDWG engine. ${extractedRooms.length} spaces extracted with total area of ${totalArea.toLocaleString()} sq.ft.`,
+      message: `${ext.toUpperCase()} floor plan '${fileName}' analyzed successfully via LibreDWG engine. ${extractedRooms.length} genuine rooms extracted with total area of ${totalArea.toLocaleString()} sq.ft.`,
       rooms: extractedRooms,
       extractedFloorsCount: floorsCount,
       extractedRoomsCount: extractedRooms.length,

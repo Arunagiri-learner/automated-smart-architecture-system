@@ -28,6 +28,7 @@ export interface IRoom {
     width: number;
     height: number;
   };
+  polygon?: number[][];
   features?: string[];
   estimatedCostINR?: number;
 }

@@ -30,6 +30,7 @@ export interface IRoom {
     width: number;
     height: number;
   };
+  polygon?: number[][];
   features?: string[];
   // Calculated room cost field
   estimatedCostINR?: number;
