@@ -45,6 +45,10 @@ export const checkDbConnection = (): boolean => {
   return isDbConnected && mongoose.connection.readyState === 1;
 };
 
+export const isProductionOrMongoConfigured = (): boolean => {
+  return process.env.NODE_ENV === 'production' || Boolean(process.env.MONGODB_URI);
+};
+
 export const disconnectDB = async (): Promise<void> => {
   if (isDbConnected) {
     await mongoose.disconnect();
@@ -52,3 +56,4 @@ export const disconnectDB = async (): Promise<void> => {
     console.log('👋 MongoDB disconnected gracefully.');
   }
 };
+

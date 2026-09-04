@@ -1,14 +1,28 @@
 import { Response } from 'express';
 import { ProjectStore } from '../models/ProjectStore';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
+import { checkDbConnection, isProductionOrMongoConfigured } from '../config/db';
+
+const verifyDbAvailable = (res: Response): boolean => {
+  if (isProductionOrMongoConfigured() && !checkDbConnection()) {
+    res.status(503).json({
+      success: false,
+      error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
+    });
+    return false;
+  }
+  return true;
+};
 
 export const getProjects = (req: AuthenticatedRequest, res: Response) => {
+  if (!verifyDbAvailable(res)) return;
   const ownerId = req.user?.id;
   const projects = ProjectStore.getAll(ownerId);
   res.json({ success: true, count: projects.length, data: projects });
 };
 
 export const getProjectById = (req: AuthenticatedRequest, res: Response) => {
+  if (!verifyDbAvailable(res)) return;
   const { id } = req.params;
   const ownerId = req.user?.id;
   const project = ProjectStore.getById(id, ownerId);
@@ -21,6 +35,7 @@ export const getProjectById = (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const createProject = (req: AuthenticatedRequest, res: Response) => {
+  if (!verifyDbAvailable(res)) return;
   const { name, location, buildingType, description } = req.body;
   const ownerId = req.user?.id;
 
@@ -36,6 +51,7 @@ export const createProject = (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const updateProject = (req: AuthenticatedRequest, res: Response) => {
+  if (!verifyDbAvailable(res)) return;
   const { id } = req.params;
   const ownerId = req.user?.id;
   const updated = ProjectStore.update(id, req.body, ownerId);
@@ -48,6 +64,7 @@ export const updateProject = (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const deleteProject = (req: AuthenticatedRequest, res: Response) => {
+  if (!verifyDbAvailable(res)) return;
   const { id } = req.params;
   const ownerId = req.user?.id;
   const success = ProjectStore.delete(id, ownerId);
@@ -60,6 +77,7 @@ export const deleteProject = (req: AuthenticatedRequest, res: Response) => {
 };
 
 export const updateRoomDetails = (req: AuthenticatedRequest, res: Response) => {
+  if (!verifyDbAvailable(res)) return;
   const { projectId, roomId } = req.params;
   const ownerId = req.user?.id;
   const updatedRoom = ProjectStore.updateRoom(projectId, roomId, req.body, ownerId);

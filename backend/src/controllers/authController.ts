@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { UserStore, UserModel } from '../models/User';
 import { generateToken, AuthenticatedRequest } from '../middleware/authMiddleware';
-import { checkDbConnection } from '../config/db';
+import { checkDbConnection, isProductionOrMongoConfigured } from '../config/db';
 import bcrypt from 'bcryptjs';
 
 export const register = async (req: Request, res: Response) => {
@@ -24,8 +24,15 @@ export const register = async (req: Request, res: Response) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Check Mongo or UserStore
-    if (checkDbConnection()) {
+    // Enforce MongoDB in production or when MONGODB_URI is provided
+    if (isProductionOrMongoConfigured()) {
+      if (!checkDbConnection()) {
+        return res.status(503).json({
+          success: false,
+          error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
+        });
+      }
+
       const existing = await UserModel.findOne({ email: cleanEmail });
       if (existing) {
         return res.status(400).json({
@@ -63,7 +70,7 @@ export const register = async (req: Request, res: Response) => {
         user: safeUser,
       });
     } else {
-      // In-Memory UserStore
+      // Offline Local Dev In-Memory UserStore
       const user = await UserStore.create({
         name,
         email: cleanEmail,
@@ -101,7 +108,15 @@ export const login = async (req: Request, res: Response) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    if (checkDbConnection()) {
+    // Enforce MongoDB in production or when MONGODB_URI is provided
+    if (isProductionOrMongoConfigured()) {
+      if (!checkDbConnection()) {
+        return res.status(503).json({
+          success: false,
+          error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
+        });
+      }
+
       const doc = await UserModel.findOne({ email: cleanEmail });
       if (!doc) {
         return res.status(401).json({
@@ -136,7 +151,7 @@ export const login = async (req: Request, res: Response) => {
         user: safeUser,
       });
     } else {
-      // In-Memory UserStore
+      // Offline Local Dev In-Memory UserStore
       const user = await UserStore.findByEmail(cleanEmail);
       if (!user) {
         return res.status(401).json({
