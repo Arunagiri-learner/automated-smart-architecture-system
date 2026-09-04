@@ -62,3 +62,38 @@ export const uploadAndAnalyze = async (req: AuthenticatedRequest, res: Response)
   }
 };
 
+export const getAnalysisByProjectId = async (req: AuthenticatedRequest, res: Response) => {
+  if (isProductionOrMongoConfigured() && !checkDbConnection()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
+    });
+  }
+
+  const { projectId } = req.params;
+  const ownerId = req.user?.id;
+  const project = ProjectStore.getById(projectId, ownerId);
+
+  if (!project) {
+    return res.status(404).json({ success: false, error: `Project '${projectId}' not found.` });
+  }
+
+  return res.json({
+    success: true,
+    data: {
+      projectId: project.id,
+      name: project.name,
+      status: project.status,
+      dwgFileName: project.dwgFileName,
+      dwgFileSize: project.dwgFileSize,
+      isDemo: project.isDemo || false,
+      rooms: project.rooms || [],
+      floorsCount: project.floorsCount || 0,
+      roomsCount: project.roomsCount || 0,
+      totalAreaSqFt: project.totalAreaSqFt || 0,
+      totalOccupancy: project.totalOccupancy || 0,
+      updatedAt: project.updatedAt,
+    },
+  });
+};
+

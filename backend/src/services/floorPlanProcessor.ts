@@ -111,7 +111,62 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
       if ((entity.type === 'MTEXT' || entity.type === 'TEXT') && entity.text) {
         const x = entity.position?.x || entity.startPoint?.x || 0;
         const y = entity.position?.y || entity.startPoint?.y || 0;
-        textLabels.push({ text: entity.text.trim(), x, y });
+        // Clean MTEXT formatting tags e.g. \pt119.22;{\fVNI-Helve-Condense...;label}
+        let cleanText = entity.text
+          .replace(/\\P/gi, ' ')
+          .replace(/\{[^{}]*\}/g, (match: string) => {
+            // Extract text after semicolon if present e.g. {\fFont;Text}
+            const parts = match.split(';');
+            return parts.length > 1 ? parts[parts.length - 1].replace(/}/g, '') : '';
+          })
+          .replace(/\\[a-zA-Z0-9.]+(;|\s)?/gi, '')
+          .replace(/[{}]/g, '')
+          .replace(/[^a-zA-Z0-9\s\-_áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệiíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴĐ]/g, '')
+          .trim();
+        if (!/^\d+(\.\d+)?$/.test(cleanText) && cleanText.length >= 2) {
+          textLabels.push({ text: cleanText, x, y });
+        }
+      }
+    }
+
+    // Detect CAD units from DXF header ($INSUNITS)
+    // 1: Inches, 2: Feet, 4: Millimeters, 5: Centimeters, 6: Meters
+    const insUnits = dxfParsed.header ? dxfParsed.header['$INSUNITS'] : 0;
+    let areaToSqFtFactor = 1.0; // Default: Feet
+    let lengthToFtFactor = 1.0;
+
+    if (insUnits === 4) {
+      // Millimeters -> feet/sq.ft
+      lengthToFtFactor = 0.00328084;
+      areaToSqFtFactor = 1 / 92903.04;
+    } else if (insUnits === 1) {
+      // Inches -> feet/sq.ft
+      lengthToFtFactor = 1 / 12;
+      areaToSqFtFactor = 1 / 144;
+    } else if (insUnits === 5) {
+      // Centimeters -> feet/sq.ft
+      lengthToFtFactor = 0.0328084;
+      areaToSqFtFactor = 1 / 929.0304;
+    } else if (insUnits === 6) {
+      // Meters -> feet/sq.ft
+      lengthToFtFactor = 3.28084;
+      areaToSqFtFactor = 10.7639;
+    } else {
+      // Fallback heuristic: check model bounds
+      let maxX = -Infinity, minX = Infinity;
+      for (const ent of dxfParsed.entities) {
+        if (ent.vertices) {
+          for (const v of ent.vertices) {
+            if (v.x > maxX) maxX = v.x;
+            if (v.x < minX) minX = v.x;
+          }
+        }
+      }
+      const modelSpan = maxX - minX;
+      if (modelSpan > 1000) {
+        // Likely millimeters
+        lengthToFtFactor = 0.00328084;
+        areaToSqFtFactor = 1 / 92903.04;
       }
     }
 
@@ -141,21 +196,22 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
             area += vertices[i].x * vertices[j].y;
             area -= vertices[j].x * vertices[i].y;
           }
-          const absArea = Math.round((Math.abs(area) / 2) * 100) / 100;
+          const rawArea = Math.abs(area) / 2;
+          const areaSqFt = Math.round(rawArea * areaToSqFtFactor);
 
-          if (absArea > 5) {
-            // Filter out tiny structural artifacts
+          // Filter sensible architectural room areas (e.g. 15 sq ft to 5,000 sq ft)
+          if (areaSqFt >= 15 && areaSqFt <= 5000) {
             // Calculate bounding box
             const minX = Math.min(...vertices.map((v) => v.x));
             const maxX = Math.max(...vertices.map((v) => v.x));
             const minY = Math.min(...vertices.map((v) => v.y));
             const maxY = Math.max(...vertices.map((v) => v.y));
-            const width = Math.round((maxX - minX) * 100) / 100;
-            const height = Math.round((maxY - minY) * 100) / 100;
+            const width = Math.round((maxX - minX) * lengthToFtFactor * 100) / 100;
+            const height = Math.round((maxY - minY) * lengthToFtFactor * 100) / 100;
 
             // Find matching text label inside or near bounding box
             const matchingText = textLabels.find(
-              (t) => t.x >= minX - 10 && t.x <= maxX + 10 && t.y >= minY - 10 && t.y <= maxY + 10
+              (t) => t.x >= minX - 500 && t.x <= maxX + 500 && t.y >= minY - 500 && t.y <= maxY + 500
             );
             const locationName = matchingText ? matchingText.text : `Space ${roomIndex}`;
 
@@ -165,13 +221,13 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
               floor: 'Ground',
               floorIndex: 0,
               location: locationName,
-              areaSqFt: Math.round(absArea),
+              areaSqFt,
               heightFt: 10,
-              occupancy: Math.max(1, Math.round(absArea / 100)),
+              occupancy: Math.max(1, Math.round(areaSqFt / 100)),
               status: 'Analyzed',
               coordinates: {
-                x: Math.round(minX),
-                y: Math.round(minY),
+                x: Math.round(minX * lengthToFtFactor),
+                y: Math.round(minY * lengthToFtFactor),
                 width,
                 height,
               },
