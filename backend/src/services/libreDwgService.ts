@@ -20,10 +20,20 @@ export class LibreDwgService {
       const fileBuffer = fs.readFileSync(filePath);
       const uint8Array = new Uint8Array(fileBuffer);
 
-      // Dynamically import and instantiate fresh WASM module per request
+      // Dynamically import and resolve createModule function cleanly
       const mod: any = await import('@mlightcad/libredwg-web');
-      const wasmInstance = mod.createModule ? await mod.createModule() : undefined;
-      const libreDwgInstance = wasmInstance ? new mod.LibreDwg(wasmInstance) : new mod.LibreDwg();
+      const createModuleFunc =
+        typeof mod.createModule === 'function'
+          ? mod.createModule
+          : typeof mod.createModule?.default === 'function'
+          ? mod.createModule.default
+          : typeof mod.default?.createModule === 'function'
+          ? mod.default.createModule
+          : undefined;
+
+      const wasmInstance = createModuleFunc ? await createModuleFunc() : undefined;
+      const LibreDwgClass = mod.LibreDwg || mod.default?.LibreDwg;
+      const libreDwgInstance = wasmInstance ? new LibreDwgClass(wasmInstance) : new LibreDwgClass();
 
       let dxfUint8Array: Uint8Array | null = libreDwgInstance.dwg_write_dxf(uint8Array.buffer);
 

@@ -238,11 +238,13 @@ export const api = {
         const errorData = await res.json();
         if (errorData && errorData.error) message = errorData.error;
       } catch (e) {
-        if (res.status === 413) message = 'Uploaded file payload is too large (exceeds server limit).';
+        if (res.status === 400) message = 'Bad Request: Invalid file upload request.';
         else if (res.status === 401) message = 'Session expired or unauthenticated. Please sign in again.';
         else if (res.status === 403) message = 'Access forbidden. You do not own this project.';
         else if (res.status === 404) message = `Project '${projectId}' not found on server.`;
+        else if (res.status === 413) message = 'Uploaded file payload is too large (exceeds server limit).';
         else if (res.status === 500) message = 'Internal server error processing floor plan.';
+        else if (res.status === 502) message = 'Bad Gateway: Backend server encountered a crash or timeout during processing.';
         else if (res.status === 503) message = 'Service or database unavailable. Please try again in a moment.';
       }
       throw new Error(message);
