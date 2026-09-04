@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import DxfParser from 'dxf-parser';
 import { IRoom } from '../types';
+import { LibreDwgService } from './libreDwgService';
 
 export interface IValidationResult {
   valid: boolean;
@@ -68,43 +69,44 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
 
   public async processFloorPlan(filePath: string, fileName: string): Promise<IProcessingResult> {
     const ext = path.extname(fileName).toLowerCase();
+    let dxfContent: string;
 
     if (ext === '.dwg') {
-      throw new Error(
-        'DWG binary parsing is not supported without a native converter. Please upload a supported ASCII DXF (.dxf) file or convert your DWG to DXF before analyzing.'
-      );
+      console.log(`⚙️ Processing DWG file '${fileName}' via LibreDWG WebAssembly Engine...`);
+      const dwgResult = await LibreDwgService.convertDwgToDxf(filePath);
+      if (!dwgResult.success || !dwgResult.dxfContent) {
+        throw new Error(dwgResult.error || 'DWG parsing failed: unable to decode binary DWG geometry.');
+      }
+      dxfContent = dwgResult.dxfContent;
+      console.log(`✅ DWG successfully parsed and converted to DXF (${dwgResult.stats?.dxfSizeBytes} bytes).`);
+    } else if (ext === '.dxf') {
+      try {
+        dxfContent = fs.readFileSync(filePath, 'utf-8');
+      } catch (err: any) {
+        throw new Error(`Failed to read uploaded DXF file: ${err.message || 'File unreadable'}`);
+      }
+    } else {
+      throw new Error(`Unsupported file extension '${ext}'. Only .dwg and .dxf files are supported.`);
     }
 
-    if (ext !== '.dxf') {
-      throw new Error(`Unsupported file extension '${ext}'. Only .dxf files can be processed directly.`);
-    }
-
-    // Read DXF File Content
-    let dxfContent: string;
-    try {
-      dxfContent = fs.readFileSync(filePath, 'utf-8');
-    } catch (err: any) {
-      throw new Error(`Failed to read uploaded DXF file: ${err.message || 'File unreadable'}`);
-    }
-
-    // Parse DXF using dxf-parser
+    // Parse DXF entity stream using dxf-parser
     const parser = new DxfParser();
     let dxfParsed: any;
     try {
       dxfParsed = parser.parseSync(dxfContent);
     } catch (err: any) {
-      throw new Error(`Invalid or corrupt DXF file structure: ${err.message || 'Parse error'}`);
+      throw new Error(`Invalid or corrupt CAD geometry structure: ${err.message || 'Parse error'}`);
     }
 
     if (!dxfParsed || !dxfParsed.entities || !Array.isArray(dxfParsed.entities)) {
-      throw new Error('DXF file contains no parseable entity elements.');
+      throw new Error('CAD file contains no parseable entity elements.');
     }
 
     // Extract closed polylines as rooms
     const extractedRooms: IRoom[] = [];
     const textLabels: { text: string; x: number; y: number }[] = [];
 
-    // 1. Collect Text Labels
+    // 1. Collect Text Labels (MTEXT, TEXT)
     for (const entity of dxfParsed.entities) {
       if ((entity.type === 'MTEXT' || entity.type === 'TEXT') && entity.text) {
         const x = entity.position?.x || entity.startPoint?.x || 0;
@@ -113,10 +115,14 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
       }
     }
 
-    // 2. Collect Closed Polyline Boundaries
+    // 2. Collect Closed Polyline Boundaries (LWPOLYLINE, POLYLINE, 2D POLYLINE)
     let roomIndex = 1;
     for (const entity of dxfParsed.entities) {
-      if ((entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') && entity.vertices && entity.vertices.length >= 3) {
+      if (
+        (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') &&
+        entity.vertices &&
+        entity.vertices.length >= 3
+      ) {
         const vertices: { x: number; y: number }[] = entity.vertices.map((v: any) => ({ x: v.x, y: v.y }));
 
         // Check if closed
@@ -138,7 +144,7 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
           const absArea = Math.round((Math.abs(area) / 2) * 100) / 100;
 
           if (absArea > 5) {
-            // Filter out tiny artifacts
+            // Filter out tiny structural artifacts
             // Calculate bounding box
             const minX = Math.min(...vertices.map((v) => v.x));
             const maxX = Math.max(...vertices.map((v) => v.x));
@@ -151,10 +157,10 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
             const matchingText = textLabels.find(
               (t) => t.x >= minX - 10 && t.x <= maxX + 10 && t.y >= minY - 10 && t.y <= maxY + 10
             );
-            const locationName = matchingText ? matchingText.text : `Extracted Space ${roomIndex}`;
+            const locationName = matchingText ? matchingText.text : `Space ${roomIndex}`;
 
             extractedRooms.push({
-              id: `dxf-rm-${roomIndex}`,
+              id: `rm-${roomIndex}`,
               slNo: roomIndex,
               floor: 'Ground',
               floorIndex: 0,
@@ -178,7 +184,7 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
 
     if (extractedRooms.length === 0) {
       throw new Error(
-        'Unable to extract closed room polygons from the uploaded DXF file. Please ensure the DXF file contains closed polylines representing room boundaries.'
+        `${ext.toUpperCase()} parsed successfully, but no closed room boundaries were detected. Please ensure the CAD drawing contains closed polylines representing room boundaries.`
       );
     }
 
@@ -188,7 +194,7 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
     return {
       success: true,
       isDemo: false,
-      message: `DXF floor plan '${fileName}' analyzed successfully. ${extractedRooms.length} spaces extracted with total area of ${totalArea.toLocaleString()} sq.ft.`,
+      message: `${ext.toUpperCase()} floor plan '${fileName}' analyzed successfully via LibreDWG engine. ${extractedRooms.length} spaces extracted with total area of ${totalArea.toLocaleString()} sq.ft.`,
       rooms: extractedRooms,
       extractedFloorsCount: floorsCount,
       extractedRoomsCount: extractedRooms.length,
