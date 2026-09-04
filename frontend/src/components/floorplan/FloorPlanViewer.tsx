@@ -28,19 +28,23 @@ interface FloorPlanViewerProps {
 /**
  * Architectural Building Bounds:
  * ViewBox: 0 0 960 660
- * Outer Wall Box: x = 40, y = 40, width = 880, height = 580
- * Usable Internal Bounds: left = 50, top = 50, right = 910, bottom = 610
+ * Outer Building Boundary: x = 40, y = 40, width = 880, height = 580 (Right = 920, Bottom = 620)
+ * Usable Internal Bounds (with 25px architectural margin): minX = 65, minY = 65, maxX = 895, maxY = 575
  */
 export const BUILDING_BOUNDS = {
-  left: 50,
-  top: 50,
-  right: 910,
-  bottom: 610,
+  x: 40,
+  y: 40,
+  width: 880,
+  height: 580,
+  minX: 65,
+  minY: 65,
+  maxX: 895,
+  maxY: 575, // Leaves generous 45px clearance to outer bottom wall (620)
 };
 
 /**
  * GEOMETRY VALIDATION STEP:
- * Enforces boundary containment and overlap prevention before rendering
+ * Enforces boundary containment, door clearance, and overlap prevention before rendering
  */
 export function validateAndSanitizeRoomGeometry(rooms: IRoom[]): {
   validRooms: IRoom[];
@@ -51,29 +55,30 @@ export function validateAndSanitizeRoomGeometry(rooms: IRoom[]): {
 
   for (let i = 0; i < rooms.length; i++) {
     const r = { ...rooms[i] };
-    let coords = { ...(r.coordinates || { x: 55, y: 55, width: 180, height: 130 }) };
+    let coords = { ...(r.coordinates || { x: 65, y: 65, width: 180, height: 130 }) };
     let wasModified = false;
 
-    // 1. Boundary Containment Checks
-    if (coords.x < BUILDING_BOUNDS.left + 5) {
-      coords.x = BUILDING_BOUNDS.left + 5;
+    // 1. Enforce Room Left & Top >= Building Left & Top
+    if (coords.x < BUILDING_BOUNDS.minX) {
+      coords.x = BUILDING_BOUNDS.minX;
       wasModified = true;
     }
-    if (coords.y < BUILDING_BOUNDS.top + 5) {
-      coords.y = BUILDING_BOUNDS.top + 5;
-      wasModified = true;
-    }
-
-    if (coords.x + coords.width > BUILDING_BOUNDS.right - 5) {
-      coords.width = Math.max(80, BUILDING_BOUNDS.right - 5 - coords.x);
-      wasModified = true;
-    }
-    if (coords.y + coords.height > BUILDING_BOUNDS.bottom - 5) {
-      coords.height = Math.max(50, BUILDING_BOUNDS.bottom - 5 - coords.y);
+    if (coords.y < BUILDING_BOUNDS.minY) {
+      coords.y = BUILDING_BOUNDS.minY;
       wasModified = true;
     }
 
-    // 2. Room-to-Room Overlap Prevention
+    // 2. Enforce Room Right & Bottom <= Building Right & Bottom
+    if (coords.x + coords.width > BUILDING_BOUNDS.maxX) {
+      coords.width = Math.max(60, BUILDING_BOUNDS.maxX - coords.x);
+      wasModified = true;
+    }
+    if (coords.y + coords.height > BUILDING_BOUNDS.maxY) {
+      coords.height = Math.max(50, BUILDING_BOUNDS.maxY - coords.y);
+      wasModified = true;
+    }
+
+    // 3. Room-to-Room Overlap Prevention
     for (let j = 0; j < validRooms.length; j++) {
       const prev = validRooms[j].coordinates;
       if (!prev) continue;
@@ -83,9 +88,9 @@ export function validateAndSanitizeRoomGeometry(rooms: IRoom[]): {
 
       if (overlapX && overlapY) {
         wasModified = true;
-        if (prev.x + prev.width + 10 + coords.width <= BUILDING_BOUNDS.right - 5) {
+        if (prev.x + prev.width + 10 + coords.width <= BUILDING_BOUNDS.maxX) {
           coords.x = prev.x + prev.width + 10;
-        } else if (prev.y + prev.height + 10 + coords.height <= BUILDING_BOUNDS.bottom - 5) {
+        } else if (prev.y + prev.height + 10 + coords.height <= BUILDING_BOUNDS.maxY) {
           coords.y = prev.y + prev.height + 10;
         }
       }
@@ -414,30 +419,56 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
               </g>
             )}
 
-            {/* 3. Central Circulation Corridor Path */}
+            {/* 3. Circulation Corridors */}
+            {/* Main North Circulation Corridor */}
             <rect
-              x="55"
-              y="210"
-              width="850"
-              height="60"
+              x="65"
+              y="205"
+              width="830"
+              height="50"
               fill="#0F172A"
               fillOpacity="0.4"
               stroke="#1E293B"
               strokeWidth="1"
               strokeDasharray="2 2"
             />
-            <text x="480" y="243" fill="#475569" fontSize="10" fontWeight="bold" letterSpacing="3" textAnchor="middle">
-              MAIN CIRCULATION CORRIDOR
+            <text x="480" y="234" fill="#475569" fontSize="9.5" fontWeight="bold" letterSpacing="3" textAnchor="middle">
+              NORTH CIRCULATION CORRIDOR
+            </text>
+
+            {/* South Circulation Corridor */}
+            <rect
+              x="65"
+              y="405"
+              width="830"
+              height="40"
+              fill="#0F172A"
+              fillOpacity="0.4"
+              stroke="#1E293B"
+              strokeWidth="1"
+              strokeDasharray="2 2"
+            />
+            <text x="480" y="429" fill="#475569" fontSize="9.5" fontWeight="bold" letterSpacing="3" textAnchor="middle">
+              SOUTH CIRCULATION CORRIDOR
             </text>
 
             {/* 4. Render Valid Rooms */}
             {floorRooms.map((room) => {
-              const coords = room.coordinates || { x: 55, y: 55, width: 180, height: 130 };
+              const coords = room.coordinates || { x: 65, y: 65, width: 180, height: 130 };
               const isSelected = selectedRoom?.id === room.id;
 
               // Center coordinates for room label & area text
               const cx = coords.x + coords.width / 2;
               const cy = coords.y + coords.height / 2;
+
+              // Smart Door Orientation based on Room Row (facing internal corridors, NEVER outer walls)
+              const isBottomRow = coords.y >= 420;
+              const isTopRow = coords.y < 200;
+              const isUpperMiddle = coords.y >= 200 && coords.y < 300;
+
+              const doorY = isBottomRow || isUpperMiddle ? coords.y : coords.y + coords.height;
+              const doorDir = isBottomRow || isUpperMiddle ? -1 : 1;
+              const doorOffset = 15;
 
               return (
                 <g
@@ -474,28 +505,32 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
                     strokeOpacity="0.5"
                   />
 
-                  {/* Attached Door Opening & Arch Swing */}
+                  {/* Attached Door Opening & Arch Swing (100% Inside Building & Corridors) */}
                   {showDoors && (
                     <g stroke={isSelected ? '#93C5FD' : '#94A3B8'} strokeWidth="1.5" fill="none">
-                      {/* Door Opening Gap on Room Boundary Wall facing Corridor */}
+                      {/* Door Opening Gap on Room Boundary Wall */}
                       <line
-                        x1={coords.x + 15}
-                        y1={coords.y + coords.height}
-                        x2={coords.x + 35}
-                        y2={coords.y + coords.height}
+                        x1={coords.x + doorOffset}
+                        y1={doorY}
+                        x2={coords.x + doorOffset + 20}
+                        y2={doorY}
                         stroke="#0A111E"
                         strokeWidth="3"
                       />
                       {/* Door Panel */}
                       <line
-                        x1={coords.x + 15}
-                        y1={coords.y + coords.height}
-                        x2={coords.x + 15}
-                        y2={coords.y + coords.height + 15}
+                        x1={coords.x + doorOffset}
+                        y1={doorY}
+                        x2={coords.x + doorOffset}
+                        y2={doorY + doorDir * 15}
                       />
                       {/* Door Swing Arc */}
                       <path
-                        d={`M ${coords.x + 15} ${coords.y + coords.height + 15} A 15 15 0 0 0 ${coords.x + 30} ${coords.y + coords.height}`}
+                        d={
+                          doorDir === -1
+                            ? `M ${coords.x + doorOffset} ${doorY - 15} A 15 15 0 0 1 ${coords.x + doorOffset + 15} ${doorY}`
+                            : `M ${coords.x + doorOffset} ${doorY + 15} A 15 15 0 0 0 ${coords.x + doorOffset + 15} ${doorY}`
+                        }
                         strokeDasharray="2 2"
                       />
                     </g>
