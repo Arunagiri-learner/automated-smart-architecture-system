@@ -350,10 +350,15 @@ export class ExcelService {
     });
 
     aRowIndex += 2;
-    assumptionsSheet.mergeCells(`A${aRowIndex}:B${aRowIndex + 2}`);
+    assumptionsSheet.mergeCells(`A${aRowIndex}:B${aRowIndex + 3}`);
     const disclaimerCell = assumptionsSheet.getCell(`A${aRowIndex}`);
     disclaimerCell.value =
-      'IMPORTANT LEGAL DISCLAIMER:\nThis workbook provides an estimated construction budget based on the assumptions and rates configured into the ASAS application. Actual construction costs may vary depending on site conditions, design specifications, material selections, local labour rates, and market conditions.';
+      'IMPORTANT ARCHITECTURAL & LEGAL DISCLAIMER:\n' +
+      '• Area is calculated from detected CAD closed space polygons (Total Room & Space Area).\n' +
+      '• Occupancy load is estimated based on standard architectural building codes (1 occupant / 100 sq.ft).\n' +
+      '• Construction budget is an estimate based on configurable rates and material/labour allocations.\n' +
+      '• Rates and percentage shares are fully configurable by the project architect or engineer.\n' +
+      '• This report is an architectural preliminary estimate, NOT a contractor quotation or certified BOQ.';
     disclaimerCell.font = { name: 'Arial', size: 9, italic: true, color: { argb: '6B7280' } };
     disclaimerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebraRowColor } };
     disclaimerCell.alignment = { wrapText: true, vertical: 'top' };

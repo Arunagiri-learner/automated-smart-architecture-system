@@ -8,6 +8,23 @@ interface RoomTableProps {
   onEditRoom?: (room: IRoom) => void;
 }
 
+export const getRoomCategory = (location: string): string => {
+  const loc = location.toLowerCase();
+  if (loc.includes('toilet') || loc.includes('bath') || loc.includes('wc') || loc.includes('restroom') || loc.includes('powder')) {
+    return 'Bathroom/Toilet';
+  }
+  if (loc.includes('garage') || loc.includes('car') || loc.includes('parking')) {
+    return 'Garage';
+  }
+  if (loc.includes('balcony') || loc.includes('terrace') || loc.includes('patio') || loc.includes('deck')) {
+    return 'Balcony/Terrace';
+  }
+  if (loc.includes('outdoor') || loc.includes('utility') || loc.includes('yard') || loc.includes('verandah') || loc.includes('porch') || loc.includes('lawn')) {
+    return 'Outdoor/Utility';
+  }
+  return 'Room';
+};
+
 export const RoomTable: React.FC<RoomTableProps> = ({ rooms, onSelectRoom, onEditRoom }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [floorFilter, setFloorFilter] = useState<string>('all');
@@ -129,6 +146,7 @@ export const RoomTable: React.FC<RoomTableProps> = ({ rooms, onSelectRoom, onEdi
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </th>
+                <th className="py-3.5 px-4">CATEGORY</th>
                 <th
                   className="py-3.5 px-4 text-right cursor-pointer hover:text-slate-900 dark:hover:text-white"
                   onClick={() => handleSort('areaSqFt')}
@@ -144,7 +162,7 @@ export const RoomTable: React.FC<RoomTableProps> = ({ rooms, onSelectRoom, onEdi
                   onClick={() => handleSort('occupancy')}
                 >
                   <div className="flex items-center justify-end gap-1">
-                    OCCUPANCY
+                    OCCUPANCY (ESTIMATED)
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </th>
@@ -153,54 +171,62 @@ export const RoomTable: React.FC<RoomTableProps> = ({ rooms, onSelectRoom, onEdi
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
-              {paginatedRooms.map((room) => (
-                <tr
-                  key={room.id}
-                  className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                >
-                  <td className="py-3 px-4 font-mono font-medium text-slate-500">
-                    {String(room.slNo).padStart(2, '0')}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded">
-                      {room.floor}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-semibold text-slate-900 dark:text-white">
-                    {room.location}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono font-semibold text-blue-600 dark:text-blue-400">
-                    {room.areaSqFt.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono">{room.heightFt} ft</td>
-                  <td className="py-3 px-4 text-right font-mono font-medium">
-                    {room.occupancy}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className="px-2 py-0.5 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded">
-                      {room.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right space-x-2">
-                    <button
-                      onClick={() => onSelectRoom(room)}
-                      className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                      title="View Details"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    {onEditRoom && (
+              {paginatedRooms.map((room) => {
+                const category = getRoomCategory(room.location);
+                return (
+                  <tr
+                    key={room.id}
+                    className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                  >
+                    <td className="py-3 px-4 font-mono font-medium text-slate-500">
+                      {String(room.slNo).padStart(2, '0')}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded">
+                        {room.floor}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 font-semibold text-slate-900 dark:text-white">
+                      {room.location}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 text-[11px] font-medium bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded">
+                        {category}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono font-semibold text-blue-600 dark:text-blue-400">
+                      {room.areaSqFt.toLocaleString()}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono">{room.heightFt} ft</td>
+                    <td className="py-3 px-4 text-right font-mono font-medium">
+                      {room.occupancy} <span className="text-[10px] text-slate-400 font-sans">est.</span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="px-2 py-0.5 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded">
+                        {room.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right space-x-2">
                       <button
-                        onClick={() => onEditRoom(room)}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
-                        title="Edit Room"
+                        onClick={() => onSelectRoom(room)}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="View Details"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Eye className="w-4 h-4" />
                       </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      {onEditRoom && (
+                        <button
+                          onClick={() => onEditRoom(room)}
+                          className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                          title="Edit Room"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

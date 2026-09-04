@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Download, FileSpreadsheet, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { IProject } from '../../types';
-import { formatINR } from '../../services/api';
+import { formatINR, calculateLocalBudget } from '../../services/api';
 
 interface ReportPreviewModalProps {
   project: IProject | null;
@@ -21,11 +21,7 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
 
   if (!project) return null;
 
-  const budget = project.budget || {
-    assumptions: { quality: 'Standard', ratePerSqFt: 2200 },
-    breakdown: { totalEstimatedCostINR: project.totalAreaSqFt * 2200 * 1.05, contingencyCostINR: project.totalAreaSqFt * 2200 * 0.05 },
-  };
-
+  const budget = project.budget || calculateLocalBudget(project.totalAreaSqFt);
   const ratePerSqFt = budget.assumptions.ratePerSqFt;
 
   return (
@@ -77,8 +73,9 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
         {/* SHEET 1 PREVIEW */}
         {activeSheet === 1 && (
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-xs">
-            <div className="bg-slate-900 text-white p-3 font-bold border-b border-slate-800">
-              BUILDING SUMMARY & ESTIMATED CONSTRUCTION BUDGET
+            <div className="bg-slate-900 text-white p-3 font-bold border-b border-slate-800 flex items-center justify-between">
+              <span>BUILDING SUMMARY & ESTIMATED CONSTRUCTION BUDGET</span>
+              {project.dwgFileName && <span className="font-mono text-slate-400 font-normal">{project.dwgFileName}</span>}
             </div>
             <div className="p-4 bg-white dark:bg-slate-900 space-y-2">
               <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
@@ -86,21 +83,32 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                 <span className="text-slate-900 dark:text-white font-medium">{project.name}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
+                <span className="font-semibold text-slate-500">DWG Source File:</span>
+                <span className="text-slate-900 dark:text-white font-mono">{project.dwgFileName || 'N/A'}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
+                <span className="font-semibold text-slate-500">Building Floors / Spaces:</span>
+                <span className="text-slate-900 dark:text-white font-medium">{project.floorsCount} Levels • {project.roomsCount} Spaces</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
                 <span className="font-semibold text-slate-500">Total Room & Space Area:</span>
                 <span className="text-blue-600 dark:text-blue-400 font-bold">{project.totalAreaSqFt.toLocaleString()} sq.ft</span>
               </div>
               <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
                 <span className="font-semibold text-slate-500">Construction Quality Tier:</span>
-                <span className="text-slate-900 dark:text-white font-medium">{budget.assumptions.quality} Finish</span>
+                <span className="text-slate-900 dark:text-white font-medium">{budget.assumptions?.quality || 'Standard'} Finish</span>
               </div>
               <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="font-semibold text-slate-500">Construction Rate / Sq.ft:</span>
+                <span className="font-semibold text-slate-500">Base Construction Rate / Sq.ft:</span>
                 <span className="font-mono text-slate-900 dark:text-white">₹ {ratePerSqFt.toLocaleString('en-IN')} / sq.ft</span>
               </div>
               <div className="grid grid-cols-2 gap-2 p-3 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-900 font-bold text-sm">
-                <span className="text-blue-800 dark:text-blue-200">TOTAL ESTIMATED BUDGET:</span>
-                <span className="text-blue-600 dark:text-blue-400 font-mono text-right">{formatINR(budget.breakdown.totalEstimatedCostINR)}</span>
+                <span className="text-blue-800 dark:text-blue-200">ESTIMATED CONSTRUCTION BUDGET:</span>
+                <span className="text-blue-600 dark:text-blue-400 font-mono text-right">{formatINR(budget.breakdown?.totalEstimatedCostINR || (project.totalAreaSqFt * ratePerSqFt * 1.05))}</span>
               </div>
+              <p className="text-[11px] text-slate-500 italic mt-2">
+                "Area is calculated from detected CAD room/space geometry and is an estimate. It may differ from certified built-up area, BOQ, or contractor measurements."
+              </p>
             </div>
           </div>
         )}
@@ -108,7 +116,7 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
         {/* SHEET 2 PREVIEW */}
         {activeSheet === 2 && (
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto max-h-[300px]">
+            <div className="overflow-x-auto max-h-[320px]">
               <table className="w-full text-left text-xs font-mono">
                 <thead className="bg-slate-900 text-white uppercase text-[10px] font-sans sticky top-0">
                   <tr>
@@ -116,19 +124,23 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                     <th className="p-2.5">FLOOR</th>
                     <th className="p-2.5 font-sans">LOCATION</th>
                     <th className="p-2.5 text-right">AREA (SQ.FT)</th>
+                    <th className="p-2.5 text-right">HEIGHT (FT)</th>
+                    <th className="p-2.5 text-right">OCCUPANCY</th>
                     <th className="p-2.5 text-right">RATE / SQ.FT</th>
                     <th className="p-2.5 text-right font-sans">ESTIMATED ROOM COST (₹)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {project.rooms.slice(0, 5).map((r) => {
+                  {project.rooms.map((r, idx) => {
                     const roomCost = Math.round(r.areaSqFt * ratePerSqFt * 1.05);
                     return (
-                      <tr key={r.id}>
-                        <td className="p-2.5 text-slate-400">{r.slNo}</td>
+                      <tr key={r.id || idx}>
+                        <td className="p-2.5 text-slate-400">{r.slNo || idx + 1}</td>
                         <td className="p-2.5">{r.floor}</td>
                         <td className="p-2.5 font-sans font-semibold text-slate-900 dark:text-white">{r.location}</td>
                         <td className="p-2.5 text-right">{r.areaSqFt}</td>
+                        <td className="p-2.5 text-right">{r.heightFt}</td>
+                        <td className="p-2.5 text-right">{r.occupancy} (est.)</td>
                         <td className="p-2.5 text-right text-slate-500">₹ {ratePerSqFt}</td>
                         <td className="p-2.5 text-right font-bold text-blue-600 dark:text-blue-400">{formatINR(roomCost)}</td>
                       </tr>
@@ -142,18 +154,27 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
 
         {/* SHEET 3 PREVIEW */}
         {activeSheet === 3 && (
-          <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2 text-xs">
+          <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3 text-xs">
             <h4 className="font-bold text-slate-900 dark:text-white mb-2">Floor Summary & Cost Distribution</h4>
-            <div className="grid grid-cols-3 gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded font-semibold">
-              <span>Ground Floor (12 Rooms, 6,250 sq.ft)</span>
-              <span className="text-right">₹ {ratePerSqFt}/sq.ft</span>
-              <span className="text-right font-mono text-blue-600 dark:text-blue-400">{formatINR(6250 * ratePerSqFt * 1.05)}</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded font-semibold">
-              <span>First Floor (14 Rooms, 6,100 sq.ft)</span>
-              <span className="text-right">₹ {ratePerSqFt}/sq.ft</span>
-              <span className="text-right font-mono text-blue-600 dark:text-blue-400">{formatINR(6100 * ratePerSqFt * 1.05)}</span>
-            </div>
+            {(() => {
+              const floorMap = new Map<string, { rooms: number; area: number }>();
+              project.rooms.forEach((r) => {
+                const existing = floorMap.get(r.floor) || { rooms: 0, area: 0 };
+                existing.rooms += 1;
+                existing.area += r.areaSqFt;
+                floorMap.set(r.floor, existing);
+              });
+              return Array.from(floorMap.entries()).map(([floorName, val]) => {
+                const totalCost = Math.round(val.area * ratePerSqFt * 1.05);
+                return (
+                  <div key={floorName} className="grid grid-cols-3 gap-2 p-3 bg-slate-50 dark:bg-slate-800/80 rounded-lg font-semibold border border-slate-200 dark:border-slate-700">
+                    <span>{floorName} Floor ({val.rooms} Spaces, {val.area.toLocaleString()} sq.ft)</span>
+                    <span className="text-right text-slate-500 font-mono">Rate: ₹ {ratePerSqFt}/sq.ft</span>
+                    <span className="text-right font-mono text-blue-600 dark:text-blue-400 font-bold">{formatINR(totalCost)}</span>
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
@@ -161,24 +182,29 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
         {activeSheet === 4 && (
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2 text-xs">
             <h4 className="font-bold text-slate-900 dark:text-white mb-2">Category Cost Breakdown</h4>
-            <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
-              <span>Structural Materials (50%):</span>
-              <span className="text-right font-mono font-semibold">{formatINR(project.totalAreaSqFt * ratePerSqFt * 0.5)}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
-              <span>Site Labour & Masonry (20%):</span>
-              <span className="text-right font-mono font-semibold">{formatINR(project.totalAreaSqFt * ratePerSqFt * 0.2)}</span>
-            </div>
+            {(budget.breakdown?.items || [
+              { category: 'Structural Materials', percentage: 50, costINR: project.totalAreaSqFt * ratePerSqFt * 0.5 },
+              { category: 'Site Labour & Masonry', percentage: 20, costINR: project.totalAreaSqFt * ratePerSqFt * 0.2 },
+            ]).map((item: any) => (
+              <div key={item.category} className="grid grid-cols-2 gap-2 py-1.5 border-b border-slate-100 dark:border-slate-800">
+                <span className="text-slate-700 dark:text-slate-300 font-medium">{item.category} ({item.percentage}%):</span>
+                <span className="text-right font-mono font-semibold text-slate-900 dark:text-white">{formatINR(item.costINR)}</span>
+              </div>
+            ))}
           </div>
         )}
 
         {/* SHEET 5 PREVIEW */}
         {activeSheet === 5 && (
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 text-xs space-y-3">
-            <h4 className="font-bold text-slate-900 dark:text-white">Assumptions & Disclaimer</h4>
-            <p className="text-slate-500 italic">
-              "This workbook provides an estimated construction budget based on the assumptions and rates entered into the system. Actual construction costs may vary depending on site conditions, design specifications, material selections, labour rates, location and market conditions."
-            </p>
+            <h4 className="font-bold text-slate-900 dark:text-white">Assumptions & Architectural Disclaimer</h4>
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-lg space-y-1.5 text-slate-600 dark:text-slate-300">
+              <p>• Area is calculated from detected CAD closed room/space geometry (Total Room & Space Area: {project.totalAreaSqFt.toLocaleString()} sq.ft).</p>
+              <p>• Occupancy is estimated based on standard architectural space density standards.</p>
+              <p>• Construction budget is an estimate based on configurable rate parameters and percentage allocations.</p>
+              <p>• Construction rate per sq.ft is configurable (Current active rate: ₹ {ratePerSqFt.toLocaleString('en-IN')}/sq.ft).</p>
+              <p>• This estimation is not a contractor quotation or certified BOQ.</p>
+            </div>
           </div>
         )}
 

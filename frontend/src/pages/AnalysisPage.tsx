@@ -5,6 +5,7 @@ import { Sidebar } from '../components/layout/Sidebar';
 import { Navbar } from '../components/layout/Navbar';
 import { MobileNav } from '../components/layout/MobileNav';
 import { FloorPlanViewer } from '../components/floorplan/FloorPlanViewer';
+import { BuildingSummaryCard } from '../components/summary/BuildingSummaryCard';
 import { RoomDetailModal } from '../components/rooms/RoomDetailModal';
 import { ToastContainer } from '../components/common/Toast';
 import { api } from '../services/api';
@@ -170,17 +171,20 @@ export const AnalysisPage: React.FC = () => {
             </div>
           )}
 
-          {/* Viewer Render */}
+          {/* Summary & Viewer Render */}
           {!errorMessage && project && (
-            <FloorPlanViewer
-              rooms={project.rooms}
-              selectedFloor={selectedFloor}
-              onFloorChange={setSelectedFloor}
-              selectedRoom={selectedRoom}
-              onSelectRoom={setSelectedRoom}
-              onEditRoom={(room) => setActiveModalRoom(room)}
-              isDemo={isDemo}
-            />
+            <>
+              <BuildingSummaryCard project={project} />
+              <FloorPlanViewer
+                rooms={project.rooms}
+                selectedFloor={selectedFloor}
+                onFloorChange={setSelectedFloor}
+                selectedRoom={selectedRoom}
+                onSelectRoom={setSelectedRoom}
+                onEditRoom={(room) => setActiveModalRoom(room)}
+                isDemo={isDemo}
+              />
+            </>
           )}
 
           {/* Edit Room Modal */}

@@ -338,7 +338,7 @@ export const BudgetEstimatorPage: React.FC = () => {
                   {/* PROMINENT TOTAL ESTIMATED BUDGET BOX */}
                   <div className="p-5 bg-gradient-to-br from-slate-950 to-blue-950/80 rounded-xl border border-blue-500/40 text-right min-w-[280px]">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 block mb-1">
-                      TOTAL ESTIMATED CONSTRUCTION BUDGET
+                      Estimated Construction Budget
                     </span>
                     <div className="text-3xl sm:text-4xl font-black text-white tracking-tight font-mono">
                       {formatINR(budgetResult.breakdown.totalEstimatedCostINR)}
@@ -355,7 +355,7 @@ export const BudgetEstimatorPage: React.FC = () => {
           <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-xl flex items-start gap-3 text-xs text-amber-800 dark:text-amber-300">
             <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold">Estimated Construction Cost Notice:</span> Actual cost may vary based on location, materials, labour rates, design specifications, site conditions and market prices. This is an analytical estimation tool, not an official contractor quotation.
+              <span className="font-bold">Estimated Construction Budget Notice:</span> This is an estimate, not a contractor quotation or certified BOQ. Actual cost may vary based on location, materials, labour rates, design specifications, site conditions and market prices.
             </div>
           </div>
 
