@@ -202,10 +202,7 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
     }
 
     // 3. Wall line boundary reconstruction for each room label
-    const extractedRooms: IRoom[] = [];
-    let roomIndex = 1;
-
-    for (const rl of roomLabels) {
+    const rawRooms = roomLabels.map((rl) => {
       let minX = rl.x - 3000,
         maxX = rl.x + 3000;
       let minY = rl.y - 3000,
@@ -249,35 +246,123 @@ export class ArchitecturalFloorPlanProcessor implements IFloorPlanProcessor {
       if (closestBottom !== -Infinity) minY = closestBottom;
       if (closestTop !== Infinity) maxY = closestTop;
 
-      const widthMm = maxX - minX;
-      const heightMm = maxY - minY;
+      return {
+        rl,
+        minX,
+        maxX,
+        minY,
+        maxY,
+      };
+    });
+
+    // 4. Pairwise resolution to eliminate room polygon overlaps
+    for (let pass = 0; pass < 5; pass++) {
+      for (let i = 0; i < rawRooms.length; i++) {
+        for (let j = i + 1; j < rawRooms.length; j++) {
+          const r1 = rawRooms[i];
+          const r2 = rawRooms[j];
+          if (r1.rl.floor !== r2.rl.floor) continue;
+
+          const xOverlap = Math.min(r1.maxX, r2.maxX) - Math.max(r1.minX, r2.minX);
+          const yOverlap = Math.min(r1.maxY, r2.maxY) - Math.max(r1.minY, r2.minY);
+
+          if (xOverlap > 10 && yOverlap > 10) {
+            const dx = r2.rl.x - r1.rl.x;
+            const dy = r2.rl.y - r1.rl.y;
+
+            if (Math.abs(dx) >= Math.abs(dy)) {
+              if (dx > 0) {
+                let splitX = (r1.rl.x + r2.rl.x) / 2;
+                let bestDist = Infinity;
+                for (const wl of wallLines) {
+                  const wallX = (wl.x1 + wl.x2) / 2;
+                  if (wallX >= r1.rl.x && wallX <= r2.rl.x) {
+                    const dist = Math.abs(wallX - splitX);
+                    if (dist < bestDist) {
+                      bestDist = dist;
+                      splitX = wallX;
+                    }
+                  }
+                }
+                r1.maxX = splitX;
+                r2.minX = splitX;
+              } else {
+                let splitX = (r1.rl.x + r2.rl.x) / 2;
+                let bestDist = Infinity;
+                for (const wl of wallLines) {
+                  const wallX = (wl.x1 + wl.x2) / 2;
+                  if (wallX >= r2.rl.x && wallX <= r1.rl.x) {
+                    const dist = Math.abs(wallX - splitX);
+                    if (dist < bestDist) {
+                      bestDist = dist;
+                      splitX = wallX;
+                    }
+                  }
+                }
+                r2.maxX = splitX;
+                r1.minX = splitX;
+              }
+            } else {
+              let splitY = (r1.rl.y + r2.rl.y) / 2;
+              let bestDist = Infinity;
+              for (const wl of wallLines) {
+                const wallY = (wl.y1 + wl.y2) / 2;
+                const minY = Math.min(r1.rl.y, r2.rl.y);
+                const maxY = Math.max(r1.rl.y, r2.rl.y);
+                if (wallY >= minY && wallY <= maxY) {
+                  const dist = Math.abs(wallY - splitY);
+                  if (dist < bestDist) {
+                    bestDist = dist;
+                    splitY = wallY;
+                  }
+                }
+              }
+              if (r1.rl.y < r2.rl.y) {
+                r1.maxY = splitY;
+                r2.minY = splitY;
+              } else {
+                r2.maxY = splitY;
+                r1.minY = splitY;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const extractedRooms: IRoom[] = [];
+    let roomIndex = 1;
+
+    for (const r of rawRooms) {
+      const widthMm = r.maxX - r.minX;
+      const heightMm = r.maxY - r.minY;
       const widthFt = Math.round(widthMm * 0.00328084 * 10) / 10;
       const heightFt = Math.round(heightMm * 0.00328084 * 10) / 10;
       const areaSqFt = Math.round(widthFt * heightFt);
 
-      if (areaSqFt >= 15 && areaSqFt <= 2000) {
+      if (areaSqFt >= 10 && areaSqFt <= 3000) {
         // Construct closed 4-point polygon rectangle
         const polygon = [
-          [Math.round(minX * 0.00328084), Math.round(minY * 0.00328084)],
-          [Math.round(maxX * 0.00328084), Math.round(minY * 0.00328084)],
-          [Math.round(maxX * 0.00328084), Math.round(maxY * 0.00328084)],
-          [Math.round(minX * 0.00328084), Math.round(maxY * 0.00328084)],
+          [Math.round(r.minX * 0.00328084), Math.round(r.minY * 0.00328084)],
+          [Math.round(r.maxX * 0.00328084), Math.round(r.minY * 0.00328084)],
+          [Math.round(r.maxX * 0.00328084), Math.round(r.maxY * 0.00328084)],
+          [Math.round(r.minX * 0.00328084), Math.round(r.maxY * 0.00328084)],
         ];
 
         extractedRooms.push({
           id: `rm-${roomIndex}`,
           slNo: roomIndex,
-          floor: rl.floor,
-          floorIndex: rl.floorIndex,
-          location: rl.name,
+          floor: r.rl.floor,
+          floorIndex: r.rl.floorIndex,
+          location: r.rl.name,
           areaSqFt,
           heightFt: 10,
           occupancy: Math.max(1, Math.round(areaSqFt / 100)),
           status: 'Analyzed',
           polygon,
           coordinates: {
-            x: Math.round(minX * 0.00328084),
-            y: Math.round(minY * 0.00328084),
+            x: Math.round(r.minX * 0.00328084),
+            y: Math.round(r.minY * 0.00328084),
             width: widthFt,
             height: heightFt,
           },

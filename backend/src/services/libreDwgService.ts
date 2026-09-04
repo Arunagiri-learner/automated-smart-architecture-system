@@ -53,7 +53,7 @@ export class LibreDwgService {
       const mod = await this.getWasmModule();
       const libreDwgInstance = mod.wasmInstance ? new mod.LibreDwg(mod.wasmInstance) : new mod.LibreDwg();
 
-      const dxfUint8Array = libreDwgInstance.dwg_write_dxf(arrayBuffer);
+      let dxfUint8Array: Uint8Array | null = libreDwgInstance.dwg_write_dxf(arrayBuffer);
 
       if (!dxfUint8Array || dxfUint8Array.length === 0) {
         return {
@@ -62,14 +62,18 @@ export class LibreDwgService {
         };
       }
 
+      const dxfSizeBytes = dxfUint8Array.length;
       const dxfContent = new TextDecoder('utf-8').decode(dxfUint8Array);
+      
+      // Release WASM memory references
+      dxfUint8Array = null;
 
       return {
         success: true,
         dxfContent,
         stats: {
           fileSizeBytes: fileBuffer.length,
-          dxfSizeBytes: dxfUint8Array.length,
+          dxfSizeBytes,
         },
       };
     } catch (err: any) {
