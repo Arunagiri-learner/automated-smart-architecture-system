@@ -573,6 +573,17 @@ export const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({
               );
             })}
           </svg>
+
+          {/* Empty Floor Plan State Overlay */}
+          {rooms.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm z-30 p-6 text-center">
+              <Layers className="w-12 h-12 text-slate-500 mb-3" />
+              <h3 className="text-xl font-bold text-white mb-1">Floor Plan Not Analyzed</h3>
+              <p className="text-xs text-slate-400 max-w-md mb-4 leading-relaxed">
+                No rooms have been extracted for this project yet. Upload an AutoCAD DXF floor plan file to automatically extract spatial boundaries, calculate room areas, and view blueprints.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

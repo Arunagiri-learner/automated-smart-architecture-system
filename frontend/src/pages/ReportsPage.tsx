@@ -11,7 +11,6 @@ import { ToastContainer } from '../components/common/Toast';
 import { api, formatINR } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { IProject, IToast } from '../types';
-import { DEMO_PROJECT_1 } from '../data/demoData';
 
 export const ReportsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -35,6 +34,7 @@ export const ReportsPage: React.FC = () => {
   const fetchProject = async () => {
     setErrorMessage(null);
     if (isDemo) {
+      const { DEMO_PROJECT_1 } = await import('../data/demoData');
       setProject(DEMO_PROJECT_1);
       return;
     }

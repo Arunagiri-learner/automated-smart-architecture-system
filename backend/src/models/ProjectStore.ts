@@ -11,15 +11,21 @@ class ProjectStoreService {
   private cleanContaminatedRealProject(project: IProject): IProject {
     if (project.isDemo) return project;
 
-    // Check if real project contains demo room patterns
+    // Check if real project contains demo room patterns or old hardcoded totals
     const hasDemoRooms =
-      project.rooms &&
-      project.rooms.some(
-        (r) =>
-          r.id.startsWith('rm-') ||
-          r.location === 'Main Entrance & Reception' ||
-          r.location === 'Executive Boardroom'
-      );
+      (project.rooms &&
+        project.rooms.some(
+          (r) =>
+            r.id.startsWith('rm-') ||
+            r.location === 'Main Entrance & Reception' ||
+            r.location === 'Executive Boardroom' ||
+            r.location === 'Visitor Lounge & Waiting' ||
+            r.location.toLowerCase().includes('reception') ||
+            r.location.toLowerCase().includes('boardroom')
+        )) ||
+      project.totalAreaSqFt === 23030 ||
+      project.roomsCount === 48 ||
+      project.totalOccupancy === 513;
 
     if (hasDemoRooms) {
       console.log(`🧹 Cleaning contaminated demo rooms from real project '${project.id}'`);
@@ -31,6 +37,8 @@ class ProjectStoreService {
       project.status = 'Draft';
       project.isDemo = false;
       project.budget = undefined;
+      project.dwgFileName = undefined;
+      project.dwgFileSize = undefined;
     }
 
     return project;

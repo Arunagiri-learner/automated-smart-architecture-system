@@ -19,7 +19,6 @@ import { MobileNav } from '../components/layout/MobileNav';
 import { api, formatINR } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { IProject } from '../types';
-import { INITIAL_PROJECTS } from '../data/demoData';
 
 export const DashboardPage: React.FC = () => {
   const [projects, setProjects] = useState<IProject[]>([]);
@@ -36,6 +35,7 @@ export const DashboardPage: React.FC = () => {
       setErrorMessage(null);
 
       if (isDemo) {
+        const { INITIAL_PROJECTS } = await import('../data/demoData');
         setProjects(INITIAL_PROJECTS);
         setIsLoading(false);
         return;

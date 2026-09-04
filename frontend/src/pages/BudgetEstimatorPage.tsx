@@ -40,7 +40,6 @@ import {
   IToast,
 } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { DEMO_PROJECT_1 } from '../data/demoData';
 
 export const BudgetEstimatorPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -81,6 +80,7 @@ export const BudgetEstimatorPage: React.FC = () => {
   const fetchProject = async () => {
     setErrorMessage(null);
     if (isDemo) {
+      const { DEMO_PROJECT_1 } = await import('../data/demoData');
       const data = DEMO_PROJECT_1;
       setProject(data);
       if (data.budget?.assumptions) {

@@ -9,7 +9,6 @@ import { ToastContainer } from '../components/common/Toast';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { IProject, BuildingType, IToast } from '../types';
-import { INITIAL_PROJECTS } from '../data/demoData';
 
 export const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<IProject[]>([]);
@@ -39,6 +38,7 @@ export const ProjectsPage: React.FC = () => {
   const loadProjects = async () => {
     setErrorMessage(null);
     if (isDemo) {
+      const { INITIAL_PROJECTS } = await import('../data/demoData');
       setProjects(INITIAL_PROJECTS);
       return;
     }

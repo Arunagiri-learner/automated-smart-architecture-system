@@ -10,7 +10,6 @@ import { ToastContainer } from '../components/common/Toast';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { IProject, IRoom, IToast } from '../types';
-import { DEMO_PROJECT_1 } from '../data/demoData';
 
 export const AnalysisPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -39,6 +38,7 @@ export const AnalysisPage: React.FC = () => {
     setErrorMessage(null);
 
     if (isDemo) {
+      const { DEMO_PROJECT_1 } = await import('../data/demoData');
       setProject(DEMO_PROJECT_1);
       setIsLoading(false);
       return;
