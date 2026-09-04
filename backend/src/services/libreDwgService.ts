@@ -13,29 +13,46 @@ export interface IDwgConversionResult {
 export class LibreDwgService {
   private static cachedMod: any = null;
   private static cachedWasmInstance: any = null;
+  private static initPromise: Promise<void> | null = null;
+
+  public static async init(): Promise<void> {
+    if (this.cachedWasmInstance) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      try {
+        console.log('⚡ Pre-warming LibreDwg WASM engine...');
+        const start = Date.now();
+        this.cachedMod = await import('@mlightcad/libredwg-web');
+        const mod = this.cachedMod;
+        const createModuleFunc =
+          typeof mod.createModule === 'function'
+            ? mod.createModule
+            : typeof mod.createModule?.default === 'function'
+            ? mod.createModule.default
+            : typeof mod.default?.createModule === 'function'
+            ? mod.default.createModule
+            : undefined;
+
+        if (createModuleFunc) {
+          this.cachedWasmInstance = await createModuleFunc();
+        }
+        console.log(`✅ LibreDwg WASM engine pre-warmed in ${Date.now() - start}ms.`);
+      } catch (err: any) {
+        console.error('⚠️ LibreDwg WASM pre-warming failed:', err.message);
+      }
+    })();
+
+    return this.initPromise;
+  }
 
   private static async getLibreDwgInstance(): Promise<any> {
-    if (!this.cachedMod) {
-      this.cachedMod = await import('@mlightcad/libredwg-web');
-    }
+    await this.init();
     const mod = this.cachedMod;
-
-    if (!this.cachedWasmInstance) {
-      const createModuleFunc =
-        typeof mod.createModule === 'function'
-          ? mod.createModule
-          : typeof mod.createModule?.default === 'function'
-          ? mod.createModule.default
-          : typeof mod.default?.createModule === 'function'
-          ? mod.default.createModule
-          : undefined;
-
-      if (createModuleFunc) {
-        this.cachedWasmInstance = await createModuleFunc();
-      }
+    const LibreDwgClass = mod?.LibreDwg || mod?.default?.LibreDwg;
+    if (!LibreDwgClass) {
+      throw new Error('LibreDwg WASM class binding unavailable.');
     }
-
-    const LibreDwgClass = mod.LibreDwg || mod.default?.LibreDwg;
     return this.cachedWasmInstance
       ? new LibreDwgClass(this.cachedWasmInstance)
       : new LibreDwgClass();

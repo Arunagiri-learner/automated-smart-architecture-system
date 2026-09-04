@@ -75,11 +75,14 @@ app.get('/api/health', (_req, res) => {
 // Production Error Handling Middleware
 app.use(errorHandler);
 
+import { LibreDwgService } from './services/libreDwgService';
+
 // Connect Database & Start Server
 const server = app.listen(PORT, async () => {
   console.log(`🚀 ASAS Production Backend running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
   await connectDB();
+  LibreDwgService.init().catch(console.error);
 });
 
 // Graceful Shutdown Handlers for Cloud Platforms (Render, Heroku, Docker)
