@@ -125,3 +125,6 @@ export interface IReportMetadata {
   fileFormat: 'xlsx';
   downloadUrl?: string;
 }
+
+declare module 'dxf-parser';
+

@@ -1,10 +1,20 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { ProjectStore } from '../models/ProjectStore';
 import { floorPlanProcessor } from '../services/floorPlanProcessor';
+import { AuthenticatedRequest } from '../middleware/authMiddleware';
+import { checkDbConnection, isProductionOrMongoConfigured } from '../config/db';
 
-export const uploadAndAnalyze = async (req: Request, res: Response) => {
+export const uploadAndAnalyze = async (req: AuthenticatedRequest, res: Response) => {
+  if (isProductionOrMongoConfigured() && !checkDbConnection()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
+    });
+  }
+
   const { projectId } = req.params;
-  const project = ProjectStore.getById(projectId);
+  const ownerId = req.user?.id;
+  const project = ProjectStore.getById(projectId, ownerId);
 
   if (!project) {
     return res.status(404).json({ success: false, error: `Project '${projectId}' not found.` });
@@ -23,31 +33,32 @@ export const uploadAndAnalyze = async (req: Request, res: Response) => {
 
   try {
     // Process file
-    const result = await floorPlanProcessor.processFloorPlan(file.path, file.originalname, true);
+    const result = await floorPlanProcessor.processFloorPlan(file.path, file.originalname);
 
-    // Update project state with analysis results
+    // Update project state with real analysis results
     const updatedProject = ProjectStore.update(projectId, {
       status: 'Analysis Complete',
       dwgFileName: file.originalname,
       dwgFileSize: file.size,
-      isDemo: result.isDemo,
+      isDemo: false,
       rooms: result.rooms,
       floorsCount: result.extractedFloorsCount,
       roomsCount: result.extractedRoomsCount,
       totalAreaSqFt: result.extractedTotalArea,
       totalOccupancy: result.rooms.reduce((s, r) => s + r.occupancy, 0),
-    });
+    }, ownerId);
 
     res.json({
       success: true,
       message: result.message,
-      isDemo: result.isDemo,
+      isDemo: false,
       data: updatedProject,
     });
   } catch (error: any) {
-    res.status(500).json({
+    res.status(400).json({
       success: false,
       error: `Floor plan analysis failed: ${error.message || 'Unknown processing error'}`,
     });
   }
 };
+

@@ -1,10 +1,20 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { ProjectStore } from '../models/ProjectStore';
 import { ExcelService } from '../services/excelService';
+import { AuthenticatedRequest } from '../middleware/authMiddleware';
+import { checkDbConnection, isProductionOrMongoConfigured } from '../config/db';
 
-export const downloadExcelReport = async (req: Request, res: Response) => {
+export const downloadExcelReport = async (req: AuthenticatedRequest, res: Response) => {
+  if (isProductionOrMongoConfigured() && !checkDbConnection()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
+    });
+  }
+
   const { projectId } = req.params;
-  const project = ProjectStore.getById(projectId);
+  const ownerId = req.user?.id;
+  const project = ProjectStore.getById(projectId, ownerId);
 
   if (!project) {
     return res.status(404).json({ success: false, error: `Project '${projectId}' not found.` });
@@ -27,9 +37,17 @@ export const downloadExcelReport = async (req: Request, res: Response) => {
   }
 };
 
-export const getReportSummary = (req: Request, res: Response) => {
+export const getReportSummary = (req: AuthenticatedRequest, res: Response) => {
+  if (isProductionOrMongoConfigured() && !checkDbConnection()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
+    });
+  }
+
   const { projectId } = req.params;
-  const project = ProjectStore.getById(projectId);
+  const ownerId = req.user?.id;
+  const project = ProjectStore.getById(projectId, ownerId);
 
   if (!project) {
     return res.status(404).json({ success: false, error: `Project '${projectId}' not found.` });

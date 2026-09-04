@@ -8,8 +8,36 @@ class ProjectStoreService {
     // Real projects start empty. No demo fallbacks in real user store.
   }
 
+  private cleanContaminatedRealProject(project: IProject): IProject {
+    if (project.isDemo) return project;
+
+    // Check if real project contains demo room patterns
+    const hasDemoRooms =
+      project.rooms &&
+      project.rooms.some(
+        (r) =>
+          r.id.startsWith('rm-') ||
+          r.location === 'Main Entrance & Reception' ||
+          r.location === 'Executive Boardroom'
+      );
+
+    if (hasDemoRooms) {
+      console.log(`🧹 Cleaning contaminated demo rooms from real project '${project.id}'`);
+      project.rooms = [];
+      project.floorsCount = 0;
+      project.roomsCount = 0;
+      project.totalAreaSqFt = 0;
+      project.totalOccupancy = 0;
+      project.status = 'Draft';
+      project.isDemo = false;
+      project.budget = undefined;
+    }
+
+    return project;
+  }
+
   public getAll(ownerId?: string): IProject[] {
-    const all = Array.from(this.projects.values());
+    const all = Array.from(this.projects.values()).map((p) => this.cleanContaminatedRealProject(p));
     if (!ownerId) return all;
     return all.filter((p) => p.ownerId === ownerId);
   }
@@ -20,7 +48,7 @@ class ProjectStoreService {
     if (ownerId && project.ownerId && project.ownerId !== ownerId) {
       return undefined;
     }
-    return project;
+    return this.cleanContaminatedRealProject(project);
   }
 
   public create(
