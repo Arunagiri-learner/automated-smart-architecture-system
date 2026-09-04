@@ -7,8 +7,11 @@ import {
   deleteProject,
   updateRoomDetails,
 } from '../controllers/projectController';
+import { authMiddleware } from '../middleware/authMiddleware';
 
 const router = Router();
+
+router.use(authMiddleware);
 
 router.get('/', getProjects);
 router.post('/', createProject);

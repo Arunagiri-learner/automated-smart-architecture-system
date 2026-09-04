@@ -2,6 +2,18 @@ export type BuildingType = 'Office' | 'Hospital' | 'School' | 'Hotel' | 'Residen
 
 export type ConstructionQuality = 'Basic' | 'Standard' | 'Premium' | 'Luxury' | 'Custom';
 
+export type UserRole = 'Architect' | 'Construction Manager' | 'Facility Manager';
+
+export interface IUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  password?: string;
+  isDemo?: boolean;
+  createdAt?: string;
+}
+
 export interface IRoom {
   id: string;
   slNo: number;
@@ -86,6 +98,7 @@ export interface IProjectBudget {
 
 export interface IProject {
   id: string;
+  ownerId?: string;
   name: string;
   location: string;
   buildingType: BuildingType;

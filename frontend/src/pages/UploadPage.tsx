@@ -85,12 +85,11 @@ export const UploadPage: React.FC = () => {
         addToast('success', 'Floor plan analyzed successfully!');
       }, 2400);
     } catch (err: any) {
-      // Fallback to complete demo processing
       setTimeout(() => {
-        setProgressStep(5);
-        setState('COMPLETE');
-        addToast('success', 'Floor plan analyzed successfully in Demo Mode!');
-      }, 2400);
+        setState('ERROR');
+        setErrorMessage(err.message || 'Analysis failed. Please ensure the DWG file contains valid vector geometry.');
+        addToast('error', 'Analysis failed.');
+      }, 1000);
     }
   };
 

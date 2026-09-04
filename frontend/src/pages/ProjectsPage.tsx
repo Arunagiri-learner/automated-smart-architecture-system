@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, FolderKanban, Trash2, Copy, ExternalLink, Edit } from 'lucide-react';
+import { Plus, Search, Filter, FolderKanban, Trash2, Copy, ExternalLink, AlertCircle } from 'lucide-react';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Navbar } from '../components/layout/Navbar';
 import { MobileNav } from '../components/layout/MobileNav';
 import { Modal } from '../components/common/Modal';
 import { ToastContainer } from '../components/common/Toast';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { IProject, BuildingType, IToast } from '../types';
-import { INITIAL_PROJECTS } from '../../../backend/src/data/demoData';
+import { INITIAL_PROJECTS } from '../data/demoData';
 
 export const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<IProject[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [buildingTypeFilter, setBuildingTypeFilter] = useState<string>('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Modals & Toasts
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
@@ -28,17 +30,25 @@ export const ProjectsPage: React.FC = () => {
   const [newDesc, setNewDesc] = useState<string>('');
 
   const navigate = useNavigate();
+  const { isDemo } = useAuth();
 
   useEffect(() => {
     loadProjects();
-  }, []);
+  }, [isDemo]);
 
   const loadProjects = async () => {
+    setErrorMessage(null);
+    if (isDemo) {
+      setProjects(INITIAL_PROJECTS);
+      return;
+    }
+
     try {
       const data = await api.getProjects();
-      setProjects(data.length ? data : INITIAL_PROJECTS);
-    } catch (err) {
-      setProjects(INITIAL_PROJECTS);
+      setProjects(data);
+    } catch (err: any) {
+      setProjects([]);
+      setErrorMessage(err.message || 'Unable to load projects. Please check your connection and try again.');
     }
   };
 
@@ -70,14 +80,14 @@ export const ProjectsPage: React.FC = () => {
       addToast('success', `Project '${created.name}' created successfully.`);
       navigate(`/upload?projectId=${created.id}`);
     } catch (err: any) {
-      addToast('error', 'Failed to create project.');
+      addToast('error', err.message || 'Failed to create project.');
     }
   };
 
   const handleDeleteProject = async (id: string) => {
     const proj = projects.find((p) => p.id === id);
     const success = await api.deleteProject(id);
-    if (success || true) {
+    if (success || isDemo) {
       setProjects((prev) => prev.filter((p) => p.id !== id));
       setDeleteConfirmId(null);
       addToast('info', `Project '${proj?.name || id}' deleted.`);
@@ -116,9 +126,16 @@ export const ProjectsPage: React.FC = () => {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-                Building Projects
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                  Building Projects
+                </h1>
+                {isDemo && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded">
+                    DEMO MODE
+                  </span>
+                )}
+              </div>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                 Manage architectural workspaces, floor plan analyses, and reports.
               </p>
@@ -163,72 +180,107 @@ export const ProjectsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Projects Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredProjects.map((project) => (
-              <div
-                key={project.id}
-                className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-subtle hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between"
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-between text-xs text-rose-300">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+              <button
+                onClick={loadProjects}
+                className="px-3 py-1 bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 font-semibold rounded"
               >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded">
-                      {project.buildingType}
-                    </span>
-                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                      {project.status}
-                    </span>
-                  </div>
+                Retry
+              </button>
+            </div>
+          )}
 
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
-                    {project.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 mb-4">{project.location}</p>
-
-                  <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg text-center text-xs mb-4">
-                    <div>
-                      <span className="text-[10px] uppercase text-slate-500 block">Floors</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{project.floorsCount}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase text-slate-500 block">Rooms</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{project.roomsCount}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase text-slate-500 block">Total Area</span>
-                      <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">
-                        {project.totalAreaSqFt.toLocaleString()}
+          {/* Empty State vs Grid */}
+          {!errorMessage && filteredProjects.length === 0 ? (
+            <div className="py-16 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8">
+              <FolderKanban className="w-12 h-12 stroke-1 text-slate-400 dark:text-slate-600 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">No projects yet</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">
+                {isDemo
+                  ? 'No demo projects found matching filter.'
+                  : 'Start by creating your first architectural project workspace to upload and analyze DWG floor plans.'}
+              </p>
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded-xl shadow-md inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                + New Project
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredProjects.map((project) => (
+                <div
+                  key={project.id}
+                  className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-subtle hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded">
+                        {project.buildingType}
+                      </span>
+                      <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                        {project.status}
                       </span>
                     </div>
+
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
+                      {project.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 mb-4">{project.location}</p>
+
+                    <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg text-center text-xs mb-4">
+                      <div>
+                        <span className="text-[10px] uppercase text-slate-500 block">Floors</span>
+                        <span className="font-bold text-slate-900 dark:text-white">{project.floorsCount}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-slate-500 block">Rooms</span>
+                        <span className="font-bold text-slate-900 dark:text-white">{project.roomsCount}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-slate-500 block">Total Area</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">
+                          {project.totalAreaSqFt.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
+                    <button
+                      onClick={() => navigate(`/analysis?projectId=${project.id}`)}
+                      className="flex-1 py-2 bg-slate-900 dark:bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 dark:hover:bg-blue-500 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Open Workspace
+                    </button>
+                    <button
+                      onClick={() => handleDuplicateProject(project)}
+                      className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                      title="Duplicate Project"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(project.id)}
+                      className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                      title="Delete Project"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
-                  <button
-                    onClick={() => navigate(`/analysis?projectId=${project.id}`)}
-                    className="flex-1 py-2 bg-slate-900 dark:bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 dark:hover:bg-blue-500 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Open Workspace
-                  </button>
-                  <button
-                    onClick={() => handleDuplicateProject(project)}
-                    className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                    title="Duplicate Project"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmId(project.id)}
-                    className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                    title="Delete Project"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </main>
 
         {/* ------------------------------------------------------------- */}
@@ -251,7 +303,7 @@ export const ProjectsPage: React.FC = () => {
                 placeholder="e.g. Modern Office Building"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
               />
             </div>
 
@@ -265,7 +317,7 @@ export const ProjectsPage: React.FC = () => {
                 placeholder="e.g. Chennai, TN"
                 value={newLocation}
                 onChange={(e) => setNewLocation(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
               />
             </div>
 
@@ -276,7 +328,7 @@ export const ProjectsPage: React.FC = () => {
               <select
                 value={newBuildingType}
                 onChange={(e) => setNewBuildingType(e.target.value as BuildingType)}
-                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
               >
                 <option value="Office">Office Building</option>
                 <option value="Hospital">Hospital / Healthcare</option>
@@ -295,7 +347,7 @@ export const ProjectsPage: React.FC = () => {
                 placeholder="Notes on building scope, levels, and structural requirements..."
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
               />
             </div>
 

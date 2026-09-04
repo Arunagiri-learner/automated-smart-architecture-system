@@ -101,33 +101,85 @@ export const calculateLocalBudget = (
   };
 };
 
+const getAuthHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('asas_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+};
+
 export const api = {
-  // Fetch all projects
-  async getProjects(): Promise<IProject[]> {
+  // Authentication
+  async register(payload: { name: string; email: string; password: string; role?: string }): Promise<{ token: string; user: any }> {
+    const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    return data;
+  },
+
+  async login(payload: { email: string; password: string }): Promise<{ token: string; user: any }> {
+    const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    return data;
+  },
+
+  async getMe(): Promise<{ user: any }> {
+    const res = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Session expired');
+    return data;
+  },
+
+  async logout(): Promise<void> {
     try {
-      const res = await fetch(`${API_BASE_URL}/projects`);
-      if (!res.ok) throw new Error('Failed to fetch projects');
-      const data = await res.json();
-      return data.data;
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
     } catch (err) {
-      console.warn('API connection offline, using fallback state:', err);
-      const fallback = localStorage.getItem('asas_projects');
-      if (fallback) return JSON.parse(fallback);
-      return [];
+      // Ignore network errors on logout
     }
+  },
+
+  // Fetch all projects belonging to current user
+  async getProjects(): Promise<IProject[]> {
+    const res = await fetch(`${API_BASE_URL}/projects`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Unable to load projects from server.');
+    }
+    const data = await res.json();
+    return data.data || [];
   },
 
   // Get project by ID
   async getProjectById(id: string): Promise<IProject | null> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/projects/${id}`);
-      if (!res.ok) throw new Error('Project not found');
-      const data = await res.json();
-      return data.data;
-    } catch (err) {
-      const projects = await this.getProjects();
-      return projects.find((p) => p.id === id) || null;
+    const res = await fetch(`${API_BASE_URL}/projects/${id}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      throw new Error('Failed to load project details.');
     }
+    const data = await res.json();
+    return data.data;
   },
 
   // Create Project
@@ -137,33 +189,17 @@ export const api = {
     buildingType: BuildingType;
     description?: string;
   }): Promise<IProject> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error('Failed to create project');
-      const data = await res.json();
-      return data.data;
-    } catch (err) {
-      const newProj: IProject = {
-        id: `proj-local-${Date.now()}`,
-        name: payload.name,
-        location: payload.location,
-        buildingType: payload.buildingType,
-        description: payload.description || '',
-        floorsCount: 0,
-        roomsCount: 0,
-        totalAreaSqFt: 0,
-        totalOccupancy: 0,
-        status: 'Draft',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        rooms: [],
-      };
-      return newProj;
+    const res = await fetch(`${API_BASE_URL}/projects`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to create project.');
     }
+    const data = await res.json();
+    return data.data;
   },
 
   // Upload DWG & analyze
@@ -175,29 +211,30 @@ export const api = {
     const formData = new FormData();
     formData.append('floorPlan', file);
 
-    try {
-      if (onProgress) onProgress(30);
-      const res = await fetch(`${API_BASE_URL}/analysis/${projectId}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+    const token = localStorage.getItem('asas_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      if (onProgress) onProgress(80);
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Upload failed');
-      }
+    if (onProgress) onProgress(30);
+    const res = await fetch(`${API_BASE_URL}/analysis/${projectId}/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
 
-      if (onProgress) onProgress(100);
-      const data = await res.json();
-      return {
-        project: data.data,
-        isDemo: data.isDemo,
-        message: data.message,
-      };
-    } catch (err: any) {
-      throw new Error(err.message || 'Upload & Analysis failed.');
+    if (onProgress) onProgress(80);
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Floor plan DWG analysis failed.');
     }
+
+    if (onProgress) onProgress(100);
+    const data = await res.json();
+    return {
+      project: data.data,
+      isDemo: false,
+      message: data.message,
+    };
   },
 
   // Update Room Details
@@ -206,18 +243,14 @@ export const api = {
     roomId: string,
     updates: Partial<IRoom>
   ): Promise<IRoom> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/projects/${projectId}/rooms/${roomId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      if (!res.ok) throw new Error('Failed to update room');
-      const data = await res.json();
-      return data.room;
-    } catch (err) {
-      throw new Error('Room update failed');
-    }
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}/rooms/${roomId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error('Failed to update room details.');
+    const data = await res.json();
+    return data.room;
   },
 
   // Update Project Budget
@@ -225,36 +258,31 @@ export const api = {
     projectId: string,
     assumptions: Partial<IBudgetAssumptions>
   ): Promise<IProjectBudget> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/budget/${projectId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(assumptions),
-      });
-      if (!res.ok) throw new Error('Failed to update budget');
-      const data = await res.json();
-      return data.data;
-    } catch (err) {
-      throw new Error('Budget update failed');
-    }
+    const res = await fetch(`${API_BASE_URL}/budget/${projectId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(assumptions),
+    });
+    if (!res.ok) throw new Error('Failed to update project budget.');
+    const data = await res.json();
+    return data.data;
   },
 
   // Delete project
   async deleteProject(id: string): Promise<boolean> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/projects/${id}`, {
-        method: 'DELETE',
-      });
-      return res.ok;
-    } catch (err) {
-      return false;
-    }
+    const res = await fetch(`${API_BASE_URL}/projects/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return res.ok;
   },
 
   // Trigger Excel Download
   async downloadExcelReport(projectId: string, projectName: string): Promise<void> {
     const url = `${API_BASE_URL}/reports/${projectId}/download`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error('Report download failed on server.');
     }

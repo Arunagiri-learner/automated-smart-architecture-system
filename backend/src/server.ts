@@ -7,6 +7,7 @@ import projectRoutes from './routes/projectRoutes';
 import analysisRoutes from './routes/analysisRoutes';
 import reportRoutes from './routes/reportRoutes';
 import budgetRoutes from './routes/budgetRoutes';
+import authRoutes from './routes/authRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -49,6 +50,7 @@ const uploadDir = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads')
 app.use('/uploads', express.static(uploadDir));
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/reports', reportRoutes);

@@ -12,8 +12,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  UserCheck,
 } from 'lucide-react';
 import { Logo } from '../common/Logo';
+import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
   currentProjectId?: string;
@@ -22,17 +24,18 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentProjectId }) => {
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const location = useLocation();
+  const { user, isDemo } = useAuth();
 
-  const activeProjectId = currentProjectId || 'proj-demo-01';
+  const querySuffix = currentProjectId ? `?projectId=${currentProjectId}` : '';
 
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Projects', path: '/projects', icon: FolderKanban },
-    { label: 'Upload Plan', path: `/upload?projectId=${activeProjectId}`, icon: Upload },
-    { label: 'Analysis', path: `/analysis?projectId=${activeProjectId}`, icon: Layers },
-    { label: 'Rooms', path: `/rooms?projectId=${activeProjectId}`, icon: Grid3X3 },
-    { label: 'Budget Estimator', path: `/budget?projectId=${activeProjectId}`, icon: Calculator },
-    { label: 'Reports', path: `/reports?projectId=${activeProjectId}`, icon: FileSpreadsheet },
+    { label: 'Upload Plan', path: `/upload${querySuffix}`, icon: Upload },
+    { label: 'Analysis', path: `/analysis${querySuffix}`, icon: Layers },
+    { label: 'Rooms', path: `/rooms${querySuffix}`, icon: Grid3X3 },
+    { label: 'Budget Estimator', path: `/budget${querySuffix}`, icon: Calculator },
+    { label: 'Reports', path: `/reports${querySuffix}`, icon: FileSpreadsheet },
   ];
 
   return (
@@ -84,16 +87,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentProjectId }) => {
           );
         })}
 
-        {/* Demo Indicator */}
+        {/* Workspace Indicator Badge */}
         {!collapsed && (
           <div className="mt-6 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Demo Workspace</span>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-              Modern Office Building (48 rooms, 24,850 sq.ft, Budget: ₹4.66 Cr).
-            </p>
+            {isDemo ? (
+              <>
+                <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 mb-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>DEMO MODE</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                  Viewing sample Modern Office Building dataset.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-1">
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>REAL WORKSPACE</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug truncate">
+                  {user?.name || user?.email || 'Authenticated User'}
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>

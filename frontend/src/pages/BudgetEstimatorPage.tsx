@@ -39,15 +39,20 @@ import {
   ConstructionQuality,
   IToast,
 } from '../types';
-import { DEMO_PROJECT_1 } from '../../../backend/src/data/demoData';
+import { useAuth } from '../context/AuthContext';
+import { DEMO_PROJECT_1 } from '../data/demoData';
 
 export const BudgetEstimatorPage: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const projectId = searchParams.get('projectId') || 'proj-demo-01';
+  const projectId = searchParams.get('projectId');
 
-  const [project, setProject] = useState<IProject>(DEMO_PROJECT_1);
+  const [project, setProject] = useState<IProject | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<IToast[]>([]);
+
+  const { isDemo } = useAuth();
+  const navigate = useNavigate();
 
   // Budget State
   const [quality, setQuality] = useState<ConstructionQuality>('Standard');
@@ -69,36 +74,57 @@ export const BudgetEstimatorPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'overview' | 'breakdown' | 'floors' | 'rooms' | 'scenarios' | 'assumptions'>('overview');
 
-  const navigate = useNavigate();
-
   useEffect(() => {
-    const fetchProject = async () => {
-      try {
-        const data = await api.getProjectById(projectId);
-        if (data) {
-          setProject(data);
-          if (data.budget?.assumptions) {
-            setQuality(data.budget.assumptions.quality);
-            setRatePerSqFt(data.budget.assumptions.ratePerSqFt);
-            setCustomRateInput(data.budget.assumptions.ratePerSqFt.toString());
-            setMaterialPct(data.budget.assumptions.materialPercentage);
-            setLabourPct(data.budget.assumptions.labourPercentage);
-            setElectricalPct(data.budget.assumptions.electricalPercentage);
-            setPlumbingPct(data.budget.assumptions.plumbingPercentage);
-            setFinishingPct(data.budget.assumptions.finishingPercentage);
-            setDoorsWindowsPct(data.budget.assumptions.doorsWindowsPercentage);
-            setPaintingPct(data.budget.assumptions.paintingPercentage);
-            setRoofingPct(data.budget.assumptions.roofingPercentage);
-            setOtherPct(data.budget.assumptions.otherPercentage);
-            setContingencyPct(data.budget.assumptions.contingencyPercentage);
-          }
-        }
-      } catch (err) {
-        setProject(DEMO_PROJECT_1);
-      }
-    };
     fetchProject();
-  }, [projectId]);
+  }, [projectId, isDemo]);
+
+  const fetchProject = async () => {
+    setErrorMessage(null);
+    if (isDemo) {
+      const data = DEMO_PROJECT_1;
+      setProject(data);
+      if (data.budget?.assumptions) {
+        setQuality(data.budget.assumptions.quality);
+        setRatePerSqFt(data.budget.assumptions.ratePerSqFt);
+        setCustomRateInput(data.budget.assumptions.ratePerSqFt.toString());
+      }
+      return;
+    }
+
+    if (!projectId) {
+      setProject(null);
+      setErrorMessage('No project selected. Please choose a project workspace.');
+      return;
+    }
+
+    try {
+      const data = await api.getProjectById(projectId);
+      if (data) {
+        setProject(data);
+        if (data.budget?.assumptions) {
+          setQuality(data.budget.assumptions.quality);
+          setRatePerSqFt(data.budget.assumptions.ratePerSqFt);
+          setCustomRateInput(data.budget.assumptions.ratePerSqFt.toString());
+          setMaterialPct(data.budget.assumptions.materialPercentage);
+          setLabourPct(data.budget.assumptions.labourPercentage);
+          setElectricalPct(data.budget.assumptions.electricalPercentage);
+          setPlumbingPct(data.budget.assumptions.plumbingPercentage);
+          setFinishingPct(data.budget.assumptions.finishingPercentage);
+          setDoorsWindowsPct(data.budget.assumptions.doorsWindowsPercentage);
+          setPaintingPct(data.budget.assumptions.paintingPercentage);
+          setRoofingPct(data.budget.assumptions.roofingPercentage);
+          setOtherPct(data.budget.assumptions.otherPercentage);
+          setContingencyPct(data.budget.assumptions.contingencyPercentage);
+        }
+      } else {
+        setProject(null);
+        setErrorMessage(`Project '${projectId}' was not found.`);
+      }
+    } catch (err: any) {
+      setProject(null);
+      setErrorMessage(err.message || 'Unable to load project budget data from server.');
+    }
+  };
 
   const addToast = (type: IToast['type'], message: string) => {
     const id = Date.now().toString();
@@ -122,9 +148,9 @@ export const BudgetEstimatorPage: React.FC = () => {
       contingencyPercentage: contingencyPct,
     };
 
-    return calculateLocalBudget(project.totalAreaSqFt || 24850, assumptions);
+    return calculateLocalBudget(project?.totalAreaSqFt || 0, assumptions);
   }, [
-    project.totalAreaSqFt,
+    project?.totalAreaSqFt,
     quality,
     ratePerSqFt,
     materialPct,
@@ -158,18 +184,21 @@ export const BudgetEstimatorPage: React.FC = () => {
   };
 
   const handleSaveBudget = async () => {
+    if (!project) return;
     try {
-      await api.updateProjectBudget(project.id, budgetResult.assumptions);
+      if (!isDemo) {
+        await api.updateProjectBudget(project.id, budgetResult.assumptions);
+      }
       addToast('success', 'Construction budget assumptions saved to workspace.');
-    } catch (err) {
-      addToast('info', 'Budget updated locally.');
+    } catch (err: any) {
+      addToast('error', err.message || 'Failed to save budget.');
     }
   };
 
   // Floor-wise calculated cost distribution
   const floorSummaries = useMemo(() => {
     const floorMap = new Map<string, { rooms: number; area: number }>();
-    (project.rooms || []).forEach((r) => {
+    (project?.rooms || []).forEach((r) => {
       const existing = floorMap.get(r.floor) || { rooms: 0, area: 0 };
       existing.rooms += 1;
       existing.area += r.areaSqFt;
@@ -190,14 +219,14 @@ export const BudgetEstimatorPage: React.FC = () => {
         };
       })
       .sort((a, b) => floorOrder.indexOf(a.floorName.split(' ')[0]) - floorOrder.indexOf(b.floorName.split(' ')[0]));
-  }, [project.rooms, ratePerSqFt, contingencyPct]);
+  }, [project?.rooms, ratePerSqFt, contingencyPct]);
 
   // Scenario Comparison Matrix
   const scenarios = useMemo(() => {
     const qualities: ConstructionQuality[] = ['Basic', 'Standard', 'Premium', 'Luxury'];
     return qualities.map((q) => {
       const rate = DEFAULT_QUALITY_RATES[q];
-      const res = calculateLocalBudget(project.totalAreaSqFt || 24850, {
+      const res = calculateLocalBudget(project?.totalAreaSqFt || 0, {
         quality: q,
         ratePerSqFt: rate,
         materialPercentage: materialPct,
@@ -211,14 +240,14 @@ export const BudgetEstimatorPage: React.FC = () => {
         isSelected: quality === q && ratePerSqFt === rate,
       };
     });
-  }, [project.totalAreaSqFt, quality, ratePerSqFt, materialPct, labourPct, contingencyPct]);
+  }, [project?.totalAreaSqFt, quality, ratePerSqFt, materialPct, labourPct, contingencyPct]);
 
   const COLORS = ['#2563EB', '#38BDF8', '#818CF8', '#A7F3D0', '#FBBF24', '#F472B6', '#C084FC', '#34D399', '#64748B', '#F87171'];
 
   return (
     <div className="min-h-screen flex bg-gray-50 dark:bg-slate-950">
-      <Sidebar currentProjectId={project.id} />
-      <MobileNav isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} currentProjectId={project.id} />
+      <Sidebar currentProjectId={project?.id} />
+      <MobileNav isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} currentProjectId={project?.id} />
 
       <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
         <Navbar onOpenMobileMenu={() => setMobileMenuOpen(true)} title="Construction Budget Estimator" />
@@ -231,7 +260,7 @@ export const BudgetEstimatorPage: React.FC = () => {
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded uppercase">
                   Spatial Financial Intelligence
                 </span>
-                <span className="text-xs text-slate-400">• {project.location}</span>
+                {project && <span className="text-xs text-slate-400">• {project.location}</span>}
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
                 Construction Budget Estimator
@@ -241,67 +270,86 @@ export const BudgetEstimatorPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleSaveBudget}
-                className="px-4 py-2 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 shadow-sm"
-              >
-                <Save className="w-4 h-4" />
-                Save Estimate
-              </button>
-              <button
-                onClick={() => navigate(`/reports?projectId=${project.id}`)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                Complete Excel Report
-              </button>
-            </div>
+            {project && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleSaveBudget}
+                  className="px-4 py-2 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white text-xs sm:text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Estimate
+                </button>
+                <button
+                  onClick={() => navigate(`/reports?projectId=${project.id}`)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Complete Excel Report
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Top Building Metrics Summary Header Card */}
-          <div className="p-6 bg-slate-900 text-white rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div>
-                <span className="px-2.5 py-1 text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded uppercase tracking-wider">
-                  Target Building
-                </span>
-                <h3 className="text-2xl font-bold text-white mt-1.5">{project.name}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{project.buildingType} Architecture • {project.location}</p>
+          {/* Error / Empty State */}
+          {errorMessage && (
+            <div className="py-16 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 max-w-lg mx-auto">
+              <AlertCircle className="w-12 h-12 stroke-1 text-rose-500 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">Unable to Load Budget Data</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">{errorMessage}</p>
+              <button
+                onClick={() => navigate('/projects')}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg inline-flex items-center gap-1.5"
+              >
+                Back to Projects
+              </button>
+            </div>
+          )}
 
-                <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t border-slate-800 text-xs">
+          {!errorMessage && project && (
+            <>
+              {/* Top Building Metrics Summary Header Card */}
+              <div className="p-6 bg-slate-900 text-white rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                   <div>
-                    <span className="text-slate-400 block text-[10px] uppercase">TOTAL AREA</span>
-                    <span className="text-lg font-bold text-blue-400 font-mono">
-                      {project.totalAreaSqFt.toLocaleString()} <span className="text-xs text-slate-400 font-normal">sq.ft</span>
+                    <span className="px-2.5 py-1 text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded uppercase tracking-wider">
+                      Target Building
                     </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase">FLOORS</span>
-                    <span className="text-lg font-bold text-white">{project.floorsCount} Levels</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase">ROOMS</span>
-                    <span className="text-lg font-bold text-white">{project.roomsCount} Spaces</span>
-                  </div>
-                </div>
-              </div>
+                    <h3 className="text-2xl font-bold text-white mt-1.5">{project.name}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">{project.buildingType} Architecture • {project.location}</p>
 
-              {/* PROMINENT TOTAL ESTIMATED BUDGET BOX */}
-              <div className="p-5 bg-gradient-to-br from-slate-950 to-blue-950/80 rounded-xl border border-blue-500/40 text-right min-w-[280px]">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 block mb-1">
-                  TOTAL ESTIMATED CONSTRUCTION BUDGET
-                </span>
-                <div className="text-3xl sm:text-4xl font-black text-white tracking-tight font-mono">
-                  {formatINR(budgetResult.breakdown.totalEstimatedCostINR)}
-                </div>
-                <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-end gap-1">
-                  <span>Based on ₹ {ratePerSqFt.toLocaleString('en-IN')}/sq.ft</span>
-                  <span>• {quality} Finish</span>
+                    <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t border-slate-800 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">TOTAL AREA</span>
+                        <span className="text-lg font-bold text-blue-400 font-mono">
+                          {(project.totalAreaSqFt || 0).toLocaleString()} <span className="text-xs text-slate-400 font-normal">sq.ft</span>
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">FLOORS</span>
+                        <span className="text-lg font-bold text-white">{project.floorsCount} Levels</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">ROOMS</span>
+                        <span className="text-lg font-bold text-white">{project.roomsCount} Spaces</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PROMINENT TOTAL ESTIMATED BUDGET BOX */}
+                  <div className="p-5 bg-gradient-to-br from-slate-950 to-blue-950/80 rounded-xl border border-blue-500/40 text-right min-w-[280px]">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 block mb-1">
+                      TOTAL ESTIMATED CONSTRUCTION BUDGET
+                    </span>
+                    <div className="text-3xl sm:text-4xl font-black text-white tracking-tight font-mono">
+                      {formatINR(budgetResult.breakdown.totalEstimatedCostINR)}
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-end gap-1">
+                      <span>Based on ₹ {ratePerSqFt.toLocaleString('en-IN')}/sq.ft</span>
+                      <span>• {quality} Finish</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
 
           {/* Mandatory Disclaimer Alert */}
           <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-xl flex items-start gap-3 text-xs text-amber-800 dark:text-amber-300">
@@ -657,6 +705,8 @@ export const BudgetEstimatorPage: React.FC = () => {
               )}
             </div>
           </div>
+            </>
+          )}
         </main>
 
         <ToastContainer toasts={toasts} onDismiss={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />

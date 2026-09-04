@@ -1,55 +1,41 @@
 import { IProject, IRoom, BuildingType, IProjectBudget, IBudgetAssumptions } from '../types';
-import { INITIAL_PROJECTS } from '../data/demoData';
 import { BudgetService } from '../services/budgetService';
 
 class ProjectStoreService {
   private projects: Map<string, IProject> = new Map();
 
   constructor() {
-    INITIAL_PROJECTS.forEach((proj) => {
-      const copy: IProject = JSON.parse(JSON.stringify(proj));
-
-      // Programmatically calculate initial budget for demo projects
-      const calculatedBudget = BudgetService.calculateBudget(copy.totalAreaSqFt);
-      copy.budget = {
-        assumptions: calculatedBudget.assumptions,
-        breakdown: calculatedBudget.breakdown,
-        history: [
-          {
-            id: 'est-001',
-            quality: calculatedBudget.assumptions.quality,
-            ratePerSqFt: calculatedBudget.assumptions.ratePerSqFt,
-            totalEstimatedCostINR: calculatedBudget.breakdown.totalEstimatedCostINR,
-            savedAt: new Date(Date.now() - 3600000).toISOString(),
-          },
-        ],
-        updatedAt: new Date().toISOString(),
-      };
-
-      // Populate room estimated costs
-      copy.rooms = BudgetService.calculateRoomCosts(copy.rooms, calculatedBudget.assumptions.ratePerSqFt);
-
-      this.projects.set(copy.id, copy);
-    });
+    // Real projects start empty. No demo fallbacks in real user store.
   }
 
-  public getAll(): IProject[] {
-    return Array.from(this.projects.values());
+  public getAll(ownerId?: string): IProject[] {
+    const all = Array.from(this.projects.values());
+    if (!ownerId) return all;
+    return all.filter((p) => p.ownerId === ownerId);
   }
 
-  public getById(id: string): IProject | undefined {
-    return this.projects.get(id);
+  public getById(id: string, ownerId?: string): IProject | undefined {
+    const project = this.projects.get(id);
+    if (!project) return undefined;
+    if (ownerId && project.ownerId && project.ownerId !== ownerId) {
+      return undefined;
+    }
+    return project;
   }
 
-  public create(data: {
-    name: string;
-    location: string;
-    buildingType: BuildingType;
-    description?: string;
-  }): IProject {
+  public create(
+    data: {
+      name: string;
+      location: string;
+      buildingType: BuildingType;
+      description?: string;
+    },
+    ownerId?: string
+  ): IProject {
     const id = `proj-${Date.now()}`;
     const newProject: IProject = {
       id,
+      ownerId,
       name: data.name,
       location: data.location,
       buildingType: data.buildingType,
@@ -67,8 +53,8 @@ class ProjectStoreService {
     return newProject;
   }
 
-  public update(id: string, updates: Partial<IProject>): IProject | undefined {
-    const existing = this.projects.get(id);
+  public update(id: string, updates: Partial<IProject>, ownerId?: string): IProject | undefined {
+    const existing = this.getById(id, ownerId);
     if (!existing) return undefined;
 
     const updated: IProject = {
@@ -98,9 +84,10 @@ class ProjectStoreService {
 
   public updateProjectBudget(
     projectId: string,
-    assumptions: Partial<IBudgetAssumptions>
+    assumptions: Partial<IBudgetAssumptions>,
+    ownerId?: string
   ): IProject | undefined {
-    const project = this.projects.get(projectId);
+    const project = this.getById(projectId, ownerId);
     if (!project) return undefined;
 
     const currentAssumptions = project.budget?.assumptions || {};
@@ -132,12 +119,19 @@ class ProjectStoreService {
     return project;
   }
 
-  public delete(id: string): boolean {
+  public delete(id: string, ownerId?: string): boolean {
+    const project = this.getById(id, ownerId);
+    if (!project) return false;
     return this.projects.delete(id);
   }
 
-  public updateRoom(projectId: string, roomId: string, updates: Partial<IRoom>): IRoom | undefined {
-    const project = this.projects.get(projectId);
+  public updateRoom(
+    projectId: string,
+    roomId: string,
+    updates: Partial<IRoom>,
+    ownerId?: string
+  ): IRoom | undefined {
+    const project = this.getById(projectId, ownerId);
     if (!project) return undefined;
 
     const roomIndex = project.rooms.findIndex((r) => r.id === roomId);
