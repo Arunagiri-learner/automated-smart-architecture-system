@@ -86,7 +86,7 @@ export const ReportPreviewModal: React.FC<ReportPreviewModalProps> = ({
                 <span className="text-slate-900 dark:text-white font-medium">{project.name}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">
-                <span className="font-semibold text-slate-500">Total Building Area:</span>
+                <span className="font-semibold text-slate-500">Total Room & Space Area:</span>
                 <span className="text-blue-600 dark:text-blue-400 font-bold">{project.totalAreaSqFt.toLocaleString()} sq.ft</span>
               </div>
               <div className="grid grid-cols-2 gap-2 py-1 border-b border-slate-100 dark:border-slate-800">

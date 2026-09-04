@@ -34,7 +34,7 @@ export const BuildingSummaryCard: React.FC<BuildingSummaryCardProps> = ({ projec
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 pt-6">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">
-            Total Building Area
+            Total Room & Space Area
           </span>
           <div className="text-3xl font-extrabold text-blue-400">
             {project.totalAreaSqFt.toLocaleString()} <span className="text-sm font-normal text-slate-400">sq.ft</span>
