@@ -233,9 +233,12 @@ export const BudgetEstimatorPage: React.FC = () => {
         labourPercentage: labourPct,
         contingencyPercentage: contingencyPct,
       });
+      const baseCostINR = Math.round((project?.totalAreaSqFt || 0) * rate);
       return {
         quality: q,
         ratePerSqFt: rate,
+        baseCostINR,
+        contingencyCostINR: res.breakdown.contingencyCostINR,
         totalCostINR: res.breakdown.totalEstimatedCostINR,
         isSelected: quality === q && ratePerSqFt === rate,
       };
@@ -626,8 +629,10 @@ export const BudgetEstimatorPage: React.FC = () => {
                         <tr>
                           <th className="py-3 px-4">CONSTRUCTION QUALITY TIER</th>
                           <th className="py-3 px-4 text-right">RATE / SQ.FT</th>
-                          <th className="py-3 px-4 text-right">TOTAL BUILT-UP AREA</th>
-                          <th className="py-3 px-4 text-right">ESTIMATED CONSTRUCTION COST</th>
+                          <th className="py-3 px-4 text-right">TOTAL AREA</th>
+                          <th className="py-3 px-4 text-right">BASE COST (₹)</th>
+                          <th className="py-3 px-4 text-right">CONTINGENCY (5%)</th>
+                          <th className="py-3 px-4 text-right">FINAL ESTIMATED BUDGET</th>
                           <th className="py-3 px-4 text-center">ACTION</th>
                         </tr>
                       </thead>
@@ -644,6 +649,8 @@ export const BudgetEstimatorPage: React.FC = () => {
                             </td>
                             <td className="py-3.5 px-4 text-right">₹ {sc.ratePerSqFt.toLocaleString('en-IN')}</td>
                             <td className="py-3.5 px-4 text-right font-sans">{project.totalAreaSqFt.toLocaleString()} sq.ft</td>
+                            <td className="py-3.5 px-4 text-right text-slate-600 dark:text-slate-400">{formatINR(sc.baseCostINR)}</td>
+                            <td className="py-3.5 px-4 text-right text-amber-600 dark:text-amber-400">{formatINR(sc.contingencyCostINR)}</td>
                             <td className="py-3.5 px-4 text-right text-base font-extrabold text-blue-600 dark:text-blue-400">{formatINR(sc.totalCostINR)}</td>
                             <td className="py-3.5 px-4 text-center font-sans">
                               <button
