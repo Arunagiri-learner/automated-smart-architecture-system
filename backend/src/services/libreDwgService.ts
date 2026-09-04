@@ -11,17 +11,16 @@ export interface IDwgConversionResult {
 }
 
 export class LibreDwgService {
-  public static async convertDwgToDxf(filePath: string): Promise<IDwgConversionResult> {
-    try {
-      if (!fs.existsSync(filePath)) {
-        return { success: false, error: `File not found at path '${filePath}'` };
-      }
+  private static cachedMod: any = null;
+  private static cachedWasmInstance: any = null;
 
-      const fileBuffer = fs.readFileSync(filePath);
-      const uint8Array = new Uint8Array(fileBuffer);
+  private static async getLibreDwgInstance(): Promise<any> {
+    if (!this.cachedMod) {
+      this.cachedMod = await import('@mlightcad/libredwg-web');
+    }
+    const mod = this.cachedMod;
 
-      // Dynamically import and resolve createModule function cleanly
-      const mod: any = await import('@mlightcad/libredwg-web');
+    if (!this.cachedWasmInstance) {
       const createModuleFunc =
         typeof mod.createModule === 'function'
           ? mod.createModule
@@ -31,9 +30,27 @@ export class LibreDwgService {
           ? mod.default.createModule
           : undefined;
 
-      const wasmInstance = createModuleFunc ? await createModuleFunc() : undefined;
-      const LibreDwgClass = mod.LibreDwg || mod.default?.LibreDwg;
-      const libreDwgInstance = wasmInstance ? new LibreDwgClass(wasmInstance) : new LibreDwgClass();
+      if (createModuleFunc) {
+        this.cachedWasmInstance = await createModuleFunc();
+      }
+    }
+
+    const LibreDwgClass = mod.LibreDwg || mod.default?.LibreDwg;
+    return this.cachedWasmInstance
+      ? new LibreDwgClass(this.cachedWasmInstance)
+      : new LibreDwgClass();
+  }
+
+  public static async convertDwgToDxf(filePath: string): Promise<IDwgConversionResult> {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: `File not found at path '${filePath}'` };
+      }
+
+      const fileBuffer = fs.readFileSync(filePath);
+      const uint8Array = new Uint8Array(fileBuffer);
+
+      const libreDwgInstance = await this.getLibreDwgInstance();
 
       let dxfUint8Array: Uint8Array | null = libreDwgInstance.dwg_write_dxf(uint8Array.buffer);
 
