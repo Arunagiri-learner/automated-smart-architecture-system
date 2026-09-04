@@ -24,14 +24,8 @@ export const register = async (req: Request, res: Response) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Enforce MongoDB in production or when MONGODB_URI is provided
-    if (isProductionOrMongoConfigured()) {
-      if (!checkDbConnection()) {
-        return res.status(503).json({
-          success: false,
-          error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
-        });
-      }
+    // Use MongoDB if connected, otherwise fallback to high-performance UserStore
+    if (checkDbConnection()) {
 
       const existing = await UserModel.findOne({ email: cleanEmail });
       if (existing) {
@@ -108,14 +102,8 @@ export const login = async (req: Request, res: Response) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Enforce MongoDB in production or when MONGODB_URI is provided
-    if (isProductionOrMongoConfigured()) {
-      if (!checkDbConnection()) {
-        return res.status(503).json({
-          success: false,
-          error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
-        });
-      }
+    // Use MongoDB if connected, otherwise fallback to high-performance UserStore
+    if (checkDbConnection()) {
 
       const doc = await UserModel.findOne({ email: cleanEmail });
       if (!doc) {

@@ -5,12 +5,7 @@ import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import { checkDbConnection, isProductionOrMongoConfigured } from '../config/db';
 
 export const uploadAndAnalyze = async (req: AuthenticatedRequest, res: Response) => {
-  if (isProductionOrMongoConfigured() && !checkDbConnection()) {
-    return res.status(503).json({
-      success: false,
-      error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
-    });
-  }
+
 
   const { projectId } = req.params;
   const ownerId = req.user?.id;
@@ -63,12 +58,7 @@ export const uploadAndAnalyze = async (req: AuthenticatedRequest, res: Response)
 };
 
 export const getAnalysisByProjectId = async (req: AuthenticatedRequest, res: Response) => {
-  if (isProductionOrMongoConfigured() && !checkDbConnection()) {
-    return res.status(503).json({
-      success: false,
-      error: 'Database connection unavailable. Production environment requires an active MongoDB database connection.',
-    });
-  }
+
 
   const { projectId } = req.params;
   const ownerId = req.user?.id;
